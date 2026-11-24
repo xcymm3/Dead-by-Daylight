@@ -52,7 +52,7 @@ export function useOnlineRoom(enabled) {
       try {
         ws = new WebSocket(onlineUrl())
       } catch {
-        setConnection('disconnected')
+        setConnection('unavailable')
         setError('联机服务地址无效。')
         return
       }
@@ -90,12 +90,12 @@ export function useOnlineRoom(enabled) {
       ws.addEventListener('close', ({ code }) => {
         if (stopped || socket.current !== ws) return
         socket.current = null
-        setConnection('disconnected')
         if (code === 4001) {
           setSeat(null)
           setRoom(null)
           setError('这个座位已在另一个页面恢复。')
         }
+        setConnection(seat.current ? 'reconnecting' : 'unavailable')
         retryTimer = setTimeout(connect, delay)
         delay = Math.min(delay * 2, 6000)
       })

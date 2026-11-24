@@ -1,6 +1,10 @@
 import React, { useState } from 'react'
 import { HUMAN, KILLER, ROLES } from './game.js'
 
+const unavailableMessage = import.meta.env.DEV
+  ? '无法连接联机服务。请在项目目录运行 npm run online:server，页面会自动重试。'
+  : '无法连接联机服务，页面会自动重试。请确认站点的房间服务已启动，且 WebSocket 地址配置正确。'
+
 export function OnlineLobby({ online }) {
   const [code, setCode] = useState('')
   const { room, connection, error, send, leave } = online
@@ -20,7 +24,11 @@ export function OnlineLobby({ online }) {
         <span className="quiet">{room ? (room.host ? '房主' : '来宾') : '双人模式'}</span>
       </div>
       <div className="panel-body">
-        {!connected && <p className="online-message" role="status">{connection === 'connecting' ? '正在连接联机服务…' : '连接已断开，正在重连…'}</p>}
+        {connection === 'connecting' && <p className="online-message">正在连接联机服务…</p>}
+        <div role="status">
+          {connection === 'reconnecting' && <p className="online-message">正在重新连接房间…</p>}
+          {connection === 'unavailable' && !error && <p className="online-message">{unavailableMessage}</p>}
+        </div>
         {error && <p className="online-error" role="alert">{error}</p>}
         {room ? (
           <>
@@ -56,7 +64,7 @@ export function OnlineLobby({ online }) {
           </>
         ) : (
           <>
-            <button type="button" className="primary wide" disabled={!connected} onClick={() => send({ type: 'create' })}>创建房间</button>
+            <button type="button" className="primary wide room-create" disabled={!connected} onClick={() => send({ type: 'create' })}>创建房间</button>
             <form className="room-join" onSubmit={join}>
               <label htmlFor="room-code">加入好友的房间</label>
               <div>

@@ -197,7 +197,8 @@ h1 { font-size: clamp(27px, 3.5vw, 38px); line-height: 1.14; letter-spacing: -.0
 .secondary { background: var(--surface); color: var(--text); }
 .secondary:hover { border-color: var(--accent-line); color: var(--accent); background: var(--accent-soft); }
 .wide { display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: 13px; }
-.online-lobby .panel-body > .wide:first-child { margin-top: 0; }
+.online-lobby .room-create { margin-top: 0; }
+.online-lobby .online-error + .room-create { margin-top: 10px; }
 .online-lobby button:disabled { opacity: .55; cursor: default; }
 .online-message { color: var(--muted); margin-block: 10px; }
 .online-error { margin: 0; padding: 8px 10px; border-radius: 5px; background: var(--killer-soft); color: var(--killer); }
