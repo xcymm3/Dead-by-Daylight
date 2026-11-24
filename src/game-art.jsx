@@ -69,6 +69,12 @@ function LegacyPallet({ condition = 'ready', south = false }) {
 const WALL_HEIGHT = 20
 const TILE_SIZE = 64
 const COURTYARD_SIZE = TILE_SIZE * 5
+const PALLET_BASE_OFFSET = 3
+const PALLET_BASE_HEIGHT = 5
+const PALLET_SPAN = TILE_SIZE + 1 - PALLET_BASE_OFFSET
+const PALLET_LANDING_RISE = WALL_HEIGHT - PALLET_BASE_HEIGHT
+const PALLET_LENGTH_RATIO = Math.hypot(PALLET_SPAN, PALLET_LANDING_RISE) / TILE_SIZE
+const PALLET_LANDING_ANGLE = Math.atan2(PALLET_LANDING_RISE, PALLET_SPAN)
 const points = (...vertices) => vertices.map(vertex => vertex.join(',')).join(' ')
 
 // Equal X and opposite Y offsets project straight up under the courtyard camera.
@@ -77,12 +83,8 @@ function raise([x, y], height) {
 }
 
 function CourtyardPallet({ condition = 'ready', south = false }) {
-  const base = [30, south ? TILE_SIZE * 4 : 0]
-  const baseHeight = 5
-  const span = condition === 'dropped'
-    ? raise([6, TILE_SIZE + 1], WALL_HEIGHT - baseHeight)
-    : raise([1, -6], 37 - baseHeight)
-  const pivot = raise(base, baseHeight)
+  const base = [30, (south ? TILE_SIZE * 4 : 0) + PALLET_BASE_OFFSET]
+  const pivot = raise(base, PALLET_BASE_HEIGHT)
   return (
     <g className="courtyard-pallet" data-state={condition} data-edge={south ? 'south' : 'north'}>
       {condition === 'broken' ? (
@@ -91,10 +93,17 @@ function CourtyardPallet({ condition = 'ready', south = false }) {
           <path d="m4-4 11-9-6 13Zm11 19 5-2-2 5Z" fill="var(--art-wood-light)" />
         </g>
       ) : (
-        <g transform={`translate(${pivot.join(' ')})`}>
-          <g className="courtyard-pallet-planks"
-            style={{ '--pallet-edge-x': span[0] / TILE_SIZE, '--pallet-edge-y': span[1] / TILE_SIZE }}>
-            <path d="M-11-1H11V65H-11Z" fill="var(--art-wood-dark)" />
+        <g className="courtyard-pallet-rig" transform={`translate(${pivot.join(' ')})`}
+          style={{ '--pallet-length-ratio': PALLET_LENGTH_RATIO,
+            '--pallet-angle': condition === 'dropped' ? `${PALLET_LANDING_ANGLE}rad` : '100deg' }}>
+          <g transform="translate(-11 0)">
+            <rect className="courtyard-pallet-side" width="1" height={TILE_SIZE} fill="var(--art-wood-dark)" />
+          </g>
+          <g transform="translate(11 0)">
+            <rect className="courtyard-pallet-side" width="1" height={TILE_SIZE} fill="var(--art-wood-light)" />
+          </g>
+          <g className="courtyard-pallet-planks">
+            <path d="M-11 0H11V64H-11Z" fill="var(--art-wood-dark)" />
             <path d="M-10 0h5v64h-5Zm7 0h6v64h-6Zm8 0h5v64H5Z" fill="var(--art-wood)" />
             <path d="M-12 8H12v6h-24ZM-12 49H12v6h-24Z" fill="var(--art-wood-light)" />
             <path d="M-8 11h1m14 0h1M-8 52h1m14 0h1" stroke="var(--art-line)" strokeWidth="1.5" strokeLinecap="round" />

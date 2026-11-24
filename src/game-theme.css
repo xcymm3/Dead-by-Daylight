@@ -185,11 +185,23 @@
 .perimeter-art { inset: 0 auto auto calc(100% / 7); inline-size: calc(500% / 7); block-size: 100%; }
 .gate-plan .perimeter-art { inset-inline-start: 0; inline-size: 100%; }
 .perimeter-front { z-index: 4; }
-@property --pallet-edge-x { syntax: "<number>"; inherits: false; initial-value: 0; }
-@property --pallet-edge-y { syntax: "<number>"; inherits: false; initial-value: 1; }
+@property --pallet-angle { syntax: "<angle>"; inherits: true; initial-value: 100deg; }
+.courtyard-pallet-rig {
+  /* Project a rigid rotation about the board's width axis, using the same elevation as the walls. */
+  --pallet-sin: sin(var(--pallet-angle));
+  --pallet-cos: cos(var(--pallet-angle));
+  --pallet-edge-x: calc(var(--pallet-length-ratio) * var(--pallet-sin));
+  --pallet-edge-y: calc(var(--pallet-length-ratio) * (var(--pallet-cos) - var(--pallet-sin)));
+  --pallet-side-x: calc(2.5 * var(--pallet-cos));
+  --pallet-side-y: calc(-2.5 * (var(--pallet-sin) + var(--pallet-cos)));
+}
 .courtyard-pallet-planks {
   transform-origin: 0 0;
   transform: matrix(1, 0, var(--pallet-edge-x), var(--pallet-edge-y), 0, 0);
+}
+.courtyard-pallet-side {
+  transform-origin: 0 0;
+  transform: matrix(var(--pallet-side-x), var(--pallet-side-y), var(--pallet-edge-x), var(--pallet-edge-y), 0, 0);
 }
 .passage-pallet-pose {
   transform-origin: 0 0;
@@ -232,7 +244,7 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .passage-pallet-pose { transition: transform 260ms var(--ease-out); }
-  .courtyard-pallet-planks { transition: --pallet-edge-x 290ms var(--ease-out), --pallet-edge-y 290ms var(--ease-out); }
+  .courtyard-pallet-rig { transition: --pallet-angle 310ms cubic-bezier(.55, .03, .73, .61); }
   .switch-track::before { transition: translate 170ms var(--ease-out); }
   .game-theme .piece-position { transition-duration: 255ms; transition-timing-function: ease-out; }
   .motion-idle { animation: pawn-idle 1.75s ease-in-out 2; }
