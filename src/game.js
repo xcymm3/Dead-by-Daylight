@@ -156,8 +156,8 @@ function record(game, text, audience = 'public') {
   return { ...game, log: [...game.log.slice(-99), event] }
 }
 
-export function visibleLog(game) {
-  return game.log.filter(event => game.player === HUMAN || event.audience !== HUMAN)
+export function visibleLog(game, viewer = game.player) {
+  return game.log.filter(event => viewer === HUMAN || event.audience !== HUMAN)
 }
 
 function captureRound(game) {

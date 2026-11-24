@@ -5,6 +5,8 @@ import {
   activeRole, actionsFor, coordinate, createGame, isPlacement, project, terrain, visibleLog,
 } from './game.js'
 import { applyMatchAction, chooseMatchOpponentAction } from './hard-opponent.js'
+import { loadOnlineSession, useOnlineRoom } from './online-client.js'
+import { OnlineLobby } from './online-lobby.jsx'
 import { loadLastReplay, saveLastReplay } from './replay.js'
 import { CharacterArt, GateArt, PerimeterArt, TerrainArt, WallRunArt } from './game-art.jsx'
 import './tokens.css'
@@ -199,10 +201,11 @@ function Setup({ selected, onSelect, difficulty, onDifficulty, onStart }) {
   )
 }
 
-function Controls({ game, view, actions, onAction, onReset, onReplay }) {
-  const role = activeRole(game)
-  const personal = role === game.player
-  const placing = isPlacement(game)
+function Controls({ game, room, paused, view, actions, onAction, onReset, onReplay }) {
+  const player = room ? room.role : game.player
+  const role = room ? room.match.role : activeRole(game)
+  const personal = role === player
+  const placing = room ? room.match.placing : isPlacement(game)
   const recovery = view.recovery
   const skipping = !placing && role === KILLER && recovery?.remaining > 0
   const sidestep = actions.some(action => action.kind === 'sidestep')
@@ -220,19 +223,23 @@ function Controls({ game, view, actions, onAction, onReset, onReplay }) {
     instruction = '点击高亮格子移动，也可以提前结束行动。'
   }
   if (view.winner) {
-    headline = view.winner === game.player ? '演练成功' : '演练结束'
-    instruction = view.winner === HUMAN ? `人类成功从${coordinate(game.escapedThrough)}撤离。` : '人类生命归零，屠夫获胜。'
+    headline = view.winner === player ? (room ? '你获胜了' : '演练成功') : (room ? '对局结束' : '演练结束')
+    const exit = room ? room.match.escapedThrough : game.escapedThrough
+    instruction = view.winner === HUMAN ? `人类成功从${coordinate(exit)}撤离。` : '人类生命归零，屠夫获胜。'
+  } else if (paused) {
+    headline = '对局暂停'
+    instruction = '正在等待双方重新连接。'
   }
   const extras = actions.filter(action => ['repair', 'drop', 'wait'].includes(action.kind))
   return (
     <section className="panel control-panel" aria-labelledby="control-title">
-      <div className="panel-title"><h2 id="control-title">行动面板</h2><span className="quiet">你扮演{ROLES[game.player]} · {DIFFICULTIES[game.difficulty]}</span></div>
+      <div className="panel-title"><h2 id="control-title">行动面板</h2><span className="quiet">你扮演{ROLES[player]} · {room ? '联机' : DIFFICULTIES[game.difficulty]}</span></div>
       <div className="panel-body">
         <div className="turn-status" role="status">
           <strong>{headline}</strong>
           <p>{instruction}</p>
         </div>
-        {!placing && !view.winner && !skipping && (
+        {!placing && !view.winner && !skipping && !paused && (
           <div className="action-budget">
             <span>{personal ? '你的' : '对手'}剩余行动</span>
             <strong className="mono">{role === KILLER ? view.steps : 1}</strong>
@@ -253,7 +260,7 @@ function Controls({ game, view, actions, onAction, onReset, onReplay }) {
         {view.winner && (
           <div className="extra-actions">
             <button type="button" className="primary" onClick={onReplay}>查看本局回放</button>
-            <button type="button" className="secondary" onClick={onReset}>返回配置</button>
+            <button type="button" className="secondary" onClick={onReset}>{room ? '退出房间' : '返回配置'}</button>
           </div>
         )}
       </div>
@@ -291,8 +298,8 @@ function ReplayPanel({ frame, lastRound, onStep, layout }) {
   )
 }
 
-function Activity({ game }) {
-  const events = game ? visibleLog(game).slice(-4).reverse() : []
+function Activity({ game, room }) {
+  const events = (room ? room.match?.log ?? [] : game ? visibleLog(game) : []).slice(-4).reverse()
   return (
     <section className="panel activity-panel" aria-labelledby="activity-title">
       <div className="panel-title"><h2 id="activity-title">操作记录</h2></div>
@@ -305,7 +312,7 @@ function Activity({ game }) {
             </li>
           ))}
         </ul>
-      ) : <p className="empty-log">{game ? '等待可见的行动记录。' : '开始后将在此显示操作记录。'}</p>}
+      ) : <p className="empty-log">{game || room?.match ? '等待可见的行动记录。' : '开始后将在此显示操作记录。'}</p>}
     </section>
   )
 }
@@ -320,7 +327,7 @@ function Rules({ dialog }) {
       <div className="rules-body">
         <section className="rules-start" aria-labelledby="rules-start-title">
           <h2 id="rules-start-title">怎么开始</h2>
-          <p>选择人类或屠夫，电脑扮演另一方。屠夫先选一个空格出生，人类再选另一个空格。</p>
+          <p>单人演练由电脑扮演另一方。好友联机时，房主先选角色，来宾扮演另一方并确认准备。开局后，屠夫先选出生空格，人类再选另一个空格。</p>
           <p>每轮<strong>屠夫先行动，最多 2 次</strong>，然后<strong>人类行动 1 次</strong>。轮到你时，点击高亮格子移动或翻越，其他操作在「行动面板」。普通移动只走上下左右，墙挡路。</p>
         </section>
         <section className="rules-role rules-human" aria-labelledby="rules-human-title">
@@ -353,16 +360,23 @@ function App() {
   const [difficulty, setDifficulty] = useState('normal')
   const [game, setGame] = useState(null)
   const [gameStyle, setGameStyle] = useState(false)
+  const [onlineMode, setOnlineMode] = useState(() => Boolean(loadOnlineSession()))
+  const online = useOnlineRoom(onlineMode)
+  const room = onlineMode ? online.room : null
+  const match = room?.match
   const [lastReplay, setLastReplay] = useState(loadLastReplay)
   const [replayIndex, setReplayIndex] = useState(null)
   const dialog = useRef(null)
-  const completedReplay = game?.winner ? game.replay : null
+  const completedReplay = match?.replay ?? (game?.winner ? game.replay : null)
   const availableReplay = completedReplay ?? lastReplay
   const replayFrame = replayIndex === null ? null : availableReplay?.[replayIndex]
   const mapLayout = replayFrame ? replayFrame.layout ?? 'original' : GATE_LAYOUT
   const role = game && activeRole(game)
-  const view = replayFrame ?? (game && project(game, game.player))
-  const actions = !replayFrame && game && role === game.player ? actionsFor(game) : []
+  const liveView = match?.view ?? (game && project(game, game.player))
+  const view = replayFrame ?? liveView
+  const paused = Boolean(match && (online.connection !== 'connected' || !room.opponentOnline))
+  const actions = replayFrame ? [] : onlineMode ? (!paused && match?.actions) || []
+    : game && role === game.player ? actionsFor(game) : []
 
   useEffect(() => {
     if (completedReplay) {
@@ -383,15 +397,21 @@ function App() {
   }, [game, role])
 
   function handleAction(action) {
+    if (onlineMode) {
+      if (match && !paused) online.send({ type: 'action', revision: room.revision, action: { kind: action.kind, to: action.to } })
+      return
+    }
     setGame(current => current === game && activeRole(current) === current.player ? applyMatchAction(current, action) : current)
   }
 
-  const reset = () => setGame(null)
+  const reset = () => onlineMode ? online.leave() : setGame(null)
   const openReplay = () => setReplayIndex(0)
   function stepReplay(offset) {
     setReplayIndex(index => Math.max(0, Math.min(availableReplay.length - 1, index + offset)))
   }
-  const stage = game ? game.winner ? '已结束' : isPlacement(game) ? '选择出生点' : '进行中' : '待开始'
+  const placing = match?.placing ?? (game && isPlacement(game))
+  const stage = liveView ? liveView.winner ? '已结束' : paused ? '已暂停' : placing ? '选择出生点' : '进行中'
+    : room ? '等待开局' : '待开始'
   return (
     <div className={gameStyle ? 'game-theme' : undefined}>
       <header className="topbar">
@@ -416,17 +436,23 @@ function App() {
           <div>
             <h1>{replayFrame ? '对局回放' : '撤离演练'}</h1>
             <p>{mapLayout !== GATE_LAYOUT ? '旧地图回放，显示原对局的地形和出口位置。'
-              : replayFrame ? '从出生位置开始，查看双方在每回合结束时的位置。' : '选择人类或屠夫，与电脑对手进行回合制对局。'}</p>
+              : replayFrame ? '从出生位置开始，查看双方在每回合结束时的位置。'
+                : onlineMode ? '创建房间或输入房间码，和朋友在线对战。' : '选择人类或屠夫，与电脑对手进行回合制对局。'}</p>
           </div>
           <div className="workspace-tools">
             {replayFrame ? (
               <button type="button" className="secondary" onClick={() => setReplayIndex(null)}>退出回放</button>
             ) : (
               <>
-                <span className="stage" data-running={Boolean(game && !game.winner)}><i aria-hidden="true" />{stage}</span>
-                {game?.round > 0 && <span className="round mono">第 {String(game.round).padStart(2, '0')} 轮</span>}
+                <span className="stage" data-running={Boolean(liveView && !liveView.winner && !paused)}><i aria-hidden="true" />{stage}</span>
+                {liveView?.round > 0 && <span className="round mono">第 {String(liveView.round).padStart(2, '0')} 轮</span>}
+                {room && <span className="round mono">房间 {room.code}</span>}
                 {game && <button type="button" className="secondary" onClick={reset}>重新配置</button>}
-                {!game && availableReplay && <button type="button" className="secondary" onClick={openReplay}>上一局回放</button>}
+                {match && !liveView.winner && <button type="button" className="secondary" onClick={reset}>退出房间</button>}
+                {!game && !room && <button type="button" className="secondary" onClick={() => setOnlineMode(value => !value)}>
+                  {onlineMode ? '单人演练' : '好友联机'}
+                </button>}
+                {!game && !room && availableReplay && <button type="button" className="secondary" onClick={openReplay}>上一局回放</button>}
               </>
             )}
           </div>
@@ -436,11 +462,14 @@ function App() {
             gameStyle={gameStyle} replayRound={replayFrame?.round ?? null} layout={mapLayout} />
           <aside className="sidebar" aria-label={replayFrame ? '回放控制' : '演练控制'}>
             {replayFrame ? <ReplayPanel frame={replayFrame} lastRound={availableReplay.length - 1} onStep={stepReplay} layout={mapLayout} />
-              : game ? <Controls game={game} view={view} actions={actions} onAction={handleAction} onReset={reset} onReplay={openReplay} />
-                : <Setup selected={selected} onSelect={setSelected} difficulty={difficulty} onDifficulty={setDifficulty}
-                  onStart={() => setGame(createGame(selected, undefined, difficulty))} />}
+              : liveView ? <Controls game={game} room={room} paused={paused} view={view} actions={actions}
+                onAction={handleAction} onReset={reset} onReplay={openReplay} />
+                : onlineMode ? <OnlineLobby online={online} />
+                  : <Setup selected={selected} onSelect={setSelected} difficulty={difficulty} onDifficulty={setDifficulty}
+                    onStart={() => setGame(createGame(selected, undefined, difficulty))} />}
+            {!replayFrame && match && online.error && <p className="online-error" role="alert">{online.error}</p>}
             <Status view={view} layout={mapLayout} />
-            {!replayFrame && <Activity game={game} />}
+            {!replayFrame && <Activity game={game} room={room} />}
           </aside>
         </div>
       </main>
