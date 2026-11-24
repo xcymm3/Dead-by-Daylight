@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { KILLER, PALLETS } from './game.js'
 
 function PalletBoards() {
@@ -12,11 +12,11 @@ function PalletBoards() {
   )
 }
 
-function WallSection({ from, to, sill = false }) {
+function WallSection({ from, to, sill = false, legacy }) {
   const near = 30
   const thickness = 14
-  const rise = sill ? 4 : 24
-  const lift = sill ? 6 : 43
+  const rise = sill ? 4 : legacy ? 24 : 12
+  const lift = sill ? 6 : legacy ? 43 : 25
   const topX = near + rise
   const bottomFar = near + thickness
   const topFar = topX + thickness
@@ -66,36 +66,51 @@ function PassagePallet({ condition = 'ready', south = false }) {
   )
 }
 
-function DoorLeaf({ south = false }) {
-  const end = south ? 39 : -39
-  const upper = end - 29
+const DOOR_TRAVEL = 40
+const DOOR_DEPTH = 20
+const DOOR_HEIGHT = 23
+
+function DoorLeaf({ travel = -DOOR_TRAVEL }) {
   return (
     <>
-      <path d={`M0 0V${end}L18 ${upper}V-29Z`} fill="var(--art-wood)" stroke="var(--art-wood-dark)" strokeWidth="2" />
-      <path d={`M6 -10v${end}M12 -19v${end}M1 ${end * .15 - 2}l16-26M1 ${end * .85 - 2}l16-26`}
+      <path d={`M0 0V${travel}L${DOOR_DEPTH} ${travel - DOOR_HEIGHT}V${-DOOR_HEIGHT}Z`}
+        fill="var(--art-wood)" stroke="var(--art-wood-dark)" strokeWidth="1.6" />
+      <path d={`M6 -7v${travel}M13 -15v${travel}M1 ${travel * .14 - 1}l18-21M1 ${travel * .86 - 1}l18-21`}
         stroke="var(--art-wood-light)" fill="none" strokeWidth="1.6" />
-      <path d={`M11 ${end * .76 - 18}l4-6`} stroke="var(--art-line)" strokeLinecap="round" strokeWidth="2.6" />
+      <path d={`M9 ${travel * .75 - 11}l5-6`} stroke="var(--art-line)" strokeLinecap="round" strokeWidth="2.6" />
     </>
   )
 }
 
 function PassageDoor({ condition = 'ready', south = false }) {
+  const aperture = useId()
+  const travel = south ? DOOR_TRAVEL : -DOOR_TRAVEL
   const state = condition === 'dropped' ? 'closed' : condition === 'broken' ? 'broken' : 'open'
   return (
-    <g className="passage-door" data-state={state} data-south={south}
+    <g className="passage-door" data-state={state} style={{ '--door-retract': `${-travel}px` }}
       transform={south ? 'translate(30 257)' : 'translate(30 63)'}>
-      <path d={south ? 'M-2 0h16v43H-2Z' : 'M-2 0h16v-43H-2Z'} fill="var(--art-shadow)" />
+      <defs>
+        <clipPath id={aperture}>
+          <path d={`M-1 0V${travel}L${DOOR_DEPTH + 1} ${travel - DOOR_HEIGHT}V${-DOOR_HEIGHT}Z`} />
+        </clipPath>
+      </defs>
+      <path d={`M-3 0h12v${travel}H-3Z`} fill="var(--art-shadow)" />
+      <path d={`M0 0V${travel}M7 0V${travel}`} fill="none" stroke="var(--art-steel-light)" strokeWidth="1.4" />
       {state === 'broken' ? (
         <g transform={south ? 'translate(6 26)' : 'translate(6 -26)'}>
           <path d="m-14 1 9-13 4 4-6 13Zm11 9 10-7 3 6-12 5Z" fill="var(--art-wood)" />
           <path d="m1-6 8-7-4 10Zm10 18 8-4-3 8Z" fill="var(--art-wood-light)" />
         </g>
       ) : (
-        <g className="passage-door-leaf">
-          <DoorLeaf south={south} />
+        <g clipPath={`url(#${aperture})`}>
+          <g className="passage-door-leaf">
+            <DoorLeaf travel={travel} />
+          </g>
         </g>
       )}
-      <path d="M-2 0 16-29 19-28 1 1Z" fill="var(--art-steel-dark)" />
+      <path d={`M0 0l${DOOR_DEPTH} ${-DOOR_HEIGHT}M0 ${travel}l${DOOR_DEPTH} ${-DOOR_HEIGHT}`}
+        fill="none" stroke="var(--art-steel-dark)" strokeWidth="3" />
+      <path d={`M${DOOR_DEPTH} ${-DOOR_HEIGHT}v${travel}`} fill="none" stroke="var(--art-steel-light)" strokeWidth="2" />
     </g>
   )
 }
@@ -106,9 +121,9 @@ export function WallRunArt({ pallets, legacy }) {
   return (
     <svg className="wall-run-art" viewBox="0 0 80 320" preserveAspectRatio="none" aria-hidden="true" focusable="false">
       <path d="M27 69 44 64 51 254 25 260Z" fill="var(--art-shadow)" />
-      <WallSection from={143} to={181} sill />
-      <WallSection from={67} to={143} />
-      <WallSection from={181} to={255} />
+      <WallSection from={143} to={181} sill legacy={legacy} />
+      <WallSection from={67} to={143} legacy={legacy} />
+      <WallSection from={181} to={255} legacy={legacy} />
       <Passage condition={pallets?.[north]} />
       <Passage condition={pallets?.[south]} south />
     </svg>
@@ -116,7 +131,7 @@ export function WallRunArt({ pallets, legacy }) {
 }
 
 function PerimeterSection({ from, to, depth, low = false }) {
-  const rise = low ? [8, -14] : [15, -27]
+  const rise = low ? [8, -22] : [12, -27]
   const offset = (point, shift) => [point[0] + shift[0], point[1] + shift[1]]
   const edgeFrom = offset(from, depth)
   const edgeTo = offset(to, depth)
@@ -145,16 +160,24 @@ function PerimeterSection({ from, to, depth, low = false }) {
   )
 }
 
-export function PerimeterArt() {
+export function PerimeterArt({ foreground = false }) {
   return (
-    <svg className="perimeter-art" viewBox="0 0 320 320" preserveAspectRatio="none" aria-hidden="true" focusable="false">
-      <path d="M0 143h-11v34H0m320-34h11v34h-11" fill="var(--art-stone-light)" />
-      <PerimeterSection from={[0, 0]} to={[320, 0]} depth={[0, -10]} />
-      <PerimeterSection from={[320, 0]} to={[320, 135]} depth={[10, 0]} />
-      <PerimeterSection from={[320, 185]} to={[320, 320]} depth={[10, 0]} low />
-      <PerimeterSection from={[0, 0]} to={[0, 135]} depth={[-10, 0]} />
-      <PerimeterSection from={[0, 185]} to={[0, 320]} depth={[-10, 0]} low />
-      <PerimeterSection from={[0, 320]} to={[320, 320]} depth={[0, 10]} low />
+    <svg className={`perimeter-art ${foreground ? 'perimeter-front' : ''}`}
+      viewBox="0 0 320 320" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+      {foreground ? (
+        <>
+          <PerimeterSection from={[320, 185]} to={[320, 320]} depth={[10, 0]} low />
+          <PerimeterSection from={[0, 185]} to={[0, 320]} depth={[-10, 0]} low />
+          <PerimeterSection from={[0, 320]} to={[320, 320]} depth={[0, 10]} low />
+        </>
+      ) : (
+        <>
+          <path d="M0 143h-11v34H0m320-34h11v34h-11" fill="var(--art-stone-light)" />
+          <PerimeterSection from={[0, 0]} to={[320, 0]} depth={[0, -10]} />
+          <PerimeterSection from={[320, 0]} to={[320, 135]} depth={[10, 0]} />
+          <PerimeterSection from={[0, 0]} to={[0, 135]} depth={[-10, 0]} />
+        </>
+      )}
     </svg>
   )
 }
@@ -202,7 +225,7 @@ export function TerrainArt({ type, condition, open }) {
       )
       break
     case 'door':
-      object = <g transform="translate(28 54) scale(.75)"><DoorLeaf /></g>
+      object = <g transform="translate(30 55) scale(.8)"><DoorLeaf /></g>
       break
     case 'machine':
       object = (

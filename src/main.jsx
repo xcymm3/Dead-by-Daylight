@@ -109,6 +109,7 @@ function Board({ view, actions, onAction, gameStyle, replayRound, legacy }) {
                 </div>
               )
             })}
+            {gameStyle && !legacy && <PerimeterArt foreground />}
           </div>
         </div>
       </div>
@@ -295,7 +296,7 @@ function Rules({ dialog }) {
           <p className="rules-goal">点亮任意 <strong>3 盏灯</strong>，再进入任一<strong>地窖</strong>即可获胜。你有 <strong>2 点生命</strong>，可以看到屠夫的位置，但不能主动走进他所在的格子。</p>
           <ul className="rules-actions">
             <li><strong>点灯</strong>　先走到灯所在格，下次行动点「原地点灯」。</li>
-            <li><strong>开着的门</strong>　开局两扇门都开着，双方可以直接走过门格。站在门旁的上下左右相邻格，可以在行动面板关门。如果屠夫正站在门格，他会被撞晕。</li>
+            <li><strong>推拉门</strong>　开局两扇门都开着，双方可以直接走过门格。站在门旁的上下左右相邻格，可以在行动面板关门。如果屠夫正站在门格，他会被撞晕。</li>
             <li><strong>翻窗和翻门</strong>　点击相邻的窗户或关上的门，即可沿原方向跨到对面的空格。移动、点灯、翻越和关门各用 1 次行动。</li>
             <li><strong>从地窖撤离</strong>　点亮 3 盏灯后，两座地窖门会开启。站在 <strong>A3</strong> 点击左侧地窖，或站在 <strong>E3</strong> 点击右侧地窖，即可撤离。</li>
           </ul>
