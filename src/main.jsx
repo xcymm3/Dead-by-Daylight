@@ -6,8 +6,10 @@ import {
 } from './game.js'
 import { chooseOpponentAction } from './opponent.js'
 import { loadLastReplay, saveLastReplay } from './replay.js'
+import { CharacterArt, TerrainArt } from './game-art.jsx'
 import './tokens.css'
 import './styles.css'
+import './game-theme.css'
 
 const TILE_NAMES = { empty: '空格', machine: '机器', window: '窗户', wall: '墙', pallet: '木板', exit: '出口' }
 const LEGEND = ['machine', 'wall', 'window', 'pallet', 'exit']
@@ -35,7 +37,7 @@ function actionLabel(action) {
   }
 }
 
-function Board({ view, actions, onAction }) {
+function Board({ view, actions, onAction, gameStyle, replayRound }) {
   const byTarget = new Map(actions
     .filter(action => ['spawn', 'move', 'vault', 'break', 'sidestep'].includes(action.kind))
     .map(action => [action.to, action]))
@@ -70,7 +72,9 @@ function Board({ view, actions, onAction }) {
                   aria-label={label} title={label}
                   aria-disabled={!action} tabIndex={action ? 0 : -1}
                   onClick={() => action && onAction(action)}>
-                  {type !== 'empty' && <TileIcon type={type} />}
+                  {type !== 'empty' && (gameStyle
+                    ? <TerrainArt type={type} condition={condition} open={open} />
+                    : <TileIcon type={type} />)}
                   {type === 'exit' && <span className="exit-name">{name}</span>}
                   {action && <span className="target-mark" aria-hidden="true" />}
                   {condition === 'repaired' && <span className="tile-check" aria-hidden="true">✓</span>}
@@ -84,7 +88,8 @@ function Board({ view, actions, onAction }) {
               return (
                 <div key={role} className={`piece-position ${shared ? `shared-${role}` : ''}`}
                   style={{ '--col': at % 5, '--row': Math.floor(at / 5) }} aria-hidden="true">
-                  <span className={`piece ${role}`}>{role === HUMAN ? '人' : '屠'}</span>
+                  {gameStyle ? <CharacterArt role={role} at={at} health={view.health} replayRound={replayRound} />
+                    : <span className={`piece ${role}`}>{role === HUMAN ? '人' : '屠'}</span>}
                 </div>
               )
             })}
@@ -92,7 +97,9 @@ function Board({ view, actions, onAction }) {
         </div>
       </div>
       <ul className="legend" aria-label="地图图例">
-        {LEGEND.map(type => <li key={type}><TileIcon type={type} />{TILE_NAMES[type]}</li>)}
+        {LEGEND.map(type => (
+          <li key={type}>{gameStyle ? <TerrainArt type={type} /> : <TileIcon type={type} />}{TILE_NAMES[type]}</li>
+        ))}
       </ul>
     </section>
   )
@@ -295,6 +302,7 @@ function Rules({ dialog }) {
 function App() {
   const [selected, setSelected] = useState(HUMAN)
   const [game, setGame] = useState(null)
+  const [gameStyle, setGameStyle] = useState(false)
   const [lastReplay, setLastReplay] = useState(loadLastReplay)
   const [replayIndex, setReplayIndex] = useState(null)
   const dialog = useRef(null)
@@ -334,11 +342,22 @@ function App() {
   }
   const stage = game ? game.winner ? '已结束' : isPlacement(game) ? '选择出生点' : '进行中' : '待开始'
   return (
-    <>
+    <div className={gameStyle ? 'game-theme' : undefined}>
       <header className="topbar">
         <div className="topbar-inner">
           <div className="product"><span className="product-icon" aria-hidden="true"><i /><i /><i /><i /></span><strong>格区调度台</strong></div>
-          <button type="button" className="rules-button" onClick={() => dialog.current.showModal()}>规则说明 <span aria-hidden="true">↗</span></button>
+          <div className="topbar-tools">
+            <label className="theme-switch">
+              <span aria-hidden="true" data-selected={!gameStyle}>工作风</span>
+              <span className="switch-control">
+                <input type="checkbox" switch="" role="switch" aria-label="游戏风"
+                  checked={gameStyle} onChange={event => setGameStyle(event.target.checked)} />
+                <span className="switch-track" aria-hidden="true" />
+              </span>
+              <span aria-hidden="true" data-selected={gameStyle}>游戏风</span>
+            </label>
+            <button type="button" className="rules-button" onClick={() => dialog.current.showModal()}>规则说明 <span aria-hidden="true">↗</span></button>
+          </div>
         </div>
       </header>
       <main className="workspace">
@@ -361,7 +380,8 @@ function App() {
           </div>
         </div>
         <div className="workspace-layout">
-          <Board view={view} actions={actions} onAction={handleAction} />
+          <Board key={Boolean(replayFrame)} view={view} actions={actions} onAction={handleAction}
+            gameStyle={gameStyle} replayRound={replayFrame?.round ?? null} />
           <aside className="sidebar" aria-label={replayFrame ? '回放控制' : '演练控制'}>
             {replayFrame ? <ReplayPanel frame={replayFrame} lastRound={availableReplay.length - 1} onStep={stepReplay} />
               : game ? <Controls game={game} view={view} actions={actions} onAction={handleAction} onReset={reset} onReplay={openReplay} />
@@ -372,7 +392,7 @@ function App() {
         </div>
       </main>
       <Rules dialog={dialog} />
-    </>
+    </div>
   )
 }
 

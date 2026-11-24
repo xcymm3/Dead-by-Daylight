@@ -1,0 +1,211 @@
+/* Hallmark · macrostructure: operations workspace · tone: atmospheric · anchor hue: amber */
+/* Hallmark · pre-emit critique: P4 H4 E4 S5 R4 V5 */
+.topbar-tools, .theme-switch { display: flex; align-items: center; }
+.topbar-tools { gap: 16px; }
+.theme-switch { gap: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; cursor: pointer; }
+.theme-switch [data-selected="true"] { color: var(--ink); font-weight: 700; }
+.switch-control { position: relative; width: 38px; height: 22px; }
+.switch-control input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.switch-track {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--muted);
+  border-radius: 12px;
+  background: var(--wall);
+  pointer-events: none;
+}
+.switch-track::before {
+  content: '';
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin: 3px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.switch-control input:checked + .switch-track { border-color: var(--accent); background: var(--accent); }
+.switch-control input:checked + .switch-track::before { translate: 16px; background: var(--plan); }
+.switch-control input:focus-visible + .switch-track { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (forced-colors: active) {
+  .switch-track::before, .switch-control input:checked + .switch-track::before { forced-color-adjust: none; background: CanvasText; }
+}
+
+.game-theme {
+  color-scheme: dark;
+  --paper: #121616;
+  --surface: #1c2222;
+  --plan: #171d1e;
+  --tile: #313737;
+  --ink: #f4ebdb;
+  --text: #dfd5c6;
+  --muted: #b1b9b7;
+  --border: #414b49;
+  --grid-line: #1c2121;
+  --grid-dot: #354040;
+  --accent: #f2bc74;
+  --accent-hover: #ffce8c;
+  --accent-soft: #373126;
+  --accent-line: #d69958;
+  --human: #9ad8d6;
+  --killer: #f8a899;
+  --killer-soft: #3e2c2a;
+  --success: #a0dbad;
+  --success-soft: #253a32;
+  --wall: #333e3d;
+  --shadow: #080a0abc;
+  --backdrop: #0a0c0cb8;
+  --game-button-ink: #241b13;
+  --game-haze: #343027;
+  --game-stone-edge: #535d58;
+  --game-stone-alt: #363c3a;
+  --game-highlight: #4e412e;
+  --game-lamp: #d3955639;
+  --art-shadow: #11171585;
+  --art-line: #342722;
+  --art-steel-light: #b3b8ab;
+  --art-steel: #667a77;
+  --art-steel-dark: #303f40;
+  --art-rust: #d8805f;
+  --art-copper: #bb8156;
+  --art-glint: #f6eacb;
+  --art-stone-light: #a4a69a;
+  --art-stone: #777e77;
+  --art-stone-dark: #515f5e;
+  --art-mortar: #475450;
+  --art-wood: #b67e51;
+  --art-wood-light: #e0ac72;
+  --art-wood-dark: #71513b;
+  --art-window: #4e989e;
+  --art-green: #acf0b4;
+  --art-gate-glow: #497d60;
+  --font-game-display: 'DM Serif Text', 'Songti SC', SimSun, Georgia, serif;
+  min-height: 100vh;
+  color: var(--ink);
+  background: radial-gradient(ellipse at 32% 12%, var(--game-haze), var(--clear) 55%), var(--paper);
+}
+.game-theme .topbar { box-shadow: 0 3px 16px var(--shadow); }
+.game-theme .workspace-heading h1 { font-family: var(--font-game-display); letter-spacing: .02em; }
+.game-theme .primary, .game-theme .piece { color: var(--game-button-ink); }
+.game-theme .product-icon i { background: var(--game-button-ink); }
+.game-theme .panel { box-shadow: 0 8px 24px var(--shadow); }
+.game-theme .map-surface {
+  background: radial-gradient(ellipse at 50% 8%, var(--game-lamp), var(--clear) 62%), var(--plan);
+  padding-block: 21px 25px;
+}
+.game-theme .plan { max-width: 436px; }
+.game-theme .board { aspect-ratio: 5 / 5.45; }
+.game-theme .tile {
+  place-content: normal;
+  place-items: center;
+  background: linear-gradient(153deg, var(--game-stone-alt), var(--tile));
+  box-shadow: inset 0 1px var(--game-stone-edge), inset 0 -3px var(--grid-line), 0 0 0 1px var(--grid-line);
+}
+.game-theme .tile:nth-child(3n) { background: var(--tile); }
+.game-theme .tile-machine.repaired, .game-theme .tile-exit.open { background: var(--success-soft); }
+.game-theme .tile-pallet.dropped { background: var(--killer-soft); }
+.game-theme .tile[aria-disabled="false"] {
+  background: var(--game-highlight);
+  box-shadow: inset 0 0 0 1.5px var(--accent-line), inset 0 -3px var(--grid-line), 0 0 0 1px var(--grid-line);
+}
+.game-theme .tile[aria-disabled="false"]:hover { box-shadow: inset 0 0 0 2px var(--accent), 0 0 0 1px var(--grid-line); }
+.game-theme .tile:focus-visible { outline-offset: -4px; }
+.game-theme .target-mark { z-index: 1; }
+.game-theme .tile-exit { margin-block: 2px; }
+.game-theme .exit-name { position: absolute; bottom: 1px; font-size: 10px; }
+.game-theme .tile-check { z-index: 1; color: var(--success); }
+.terrain-art { display: block; width: 100%; height: 100%; max-height: 100%; pointer-events: none; }
+.tile .terrain-art { position: absolute; inset: 0; }
+.tile-exit .terrain-art { height: calc(100% - 8px); }
+.legend .terrain-art { width: 26px; height: 21px; flex: none; }
+
+.character-art {
+  width: 90%;
+  height: 113%;
+  overflow: visible;
+  align-self: end;
+  translate: 0 -3%;
+  --character-ink: var(--human);
+}
+.character-killer { --character-ink: var(--killer); }
+.shared-human .character-art { translate: 19% -2%; }
+.shared-killer .character-art { translate: -19% -5%; }
+.character-shadow { fill: var(--art-shadow); }
+.character-base { fill: var(--art-shadow); stroke: var(--character-ink); stroke-width: 1; opacity: .85; }
+.character-limbs { fill: none; stroke: var(--character-ink); stroke-width: 3.4; }
+.character-head { fill: var(--character-ink); stroke: var(--plan); stroke-width: 1.2; }
+.character-face { fill: none; stroke: var(--plan); stroke-width: 1.8; stroke-linecap: round; }
+.knife-handle { stroke: var(--art-wood-light); stroke-width: 3; }
+.knife-blade { fill: var(--art-steel-light); stroke: var(--plan); stroke-width: 1; }
+.knife-edge { stroke: var(--art-glint); stroke-width: 1; }
+.character-rig { transform-origin: 32px 59px; }
+.limb { transform-box: view-box; }
+.leg-back, .leg-front { transform-origin: 31px 42px; }
+.arm-front { transform-origin: 30px 28px; }
+.arm-back { transform-origin: 28px 28px; }
+.character-swipe, .character-impact { fill: none; stroke-width: 2.2; stroke-linecap: round; }
+.character-swipe { stroke: var(--accent); }
+.character-impact { stroke: var(--killer); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .switch-track::before { transition: translate 170ms var(--ease-out); }
+  .game-theme .piece-position { transition-duration: 255ms; transition-timing-function: ease-out; }
+  .motion-idle { animation: pawn-idle 1.75s ease-in-out 2; }
+  .motion-walk { animation: pawn-walk 270ms ease-in-out; }
+  .motion-walk .limb { animation: pawn-stride 134ms ease-in-out 2 alternate; }
+  .motion-walk .leg-back, .motion-walk .arm-front { animation-direction: alternate-reverse; }
+  .motion-vault { animation: pawn-vault 370ms var(--ease-out); }
+  .motion-attack { animation: pawn-lunge 290ms 170ms ease-out both; }
+  .motion-attack .arm-front { animation: pawn-strike 310ms 160ms ease-in-out both; }
+  .motion-hurt { animation: pawn-hurt 330ms 165ms ease-out both; }
+  .character-swipe, .character-impact { animation: pawn-impact 230ms 210ms ease-out both; }
+
+  @keyframes pawn-idle {
+    0%, 100% { transform: scaleY(1); }
+    50% { transform: scaleY(.955) rotate(-2deg); }
+  }
+  @keyframes pawn-walk {
+    0%, 50%, 100% { transform: translateY(0); }
+    25%, 75% { transform: translateY(-3px); }
+  }
+  @keyframes pawn-stride {
+    from { rotate: -23deg; }
+    to { rotate: 25deg; }
+  }
+  @keyframes pawn-vault {
+    0%, 100% { transform: translateY(0); }
+    42% { transform: translateY(-13px) rotate(11deg); }
+  }
+  @keyframes pawn-lunge {
+    0%, 100% { transform: none; }
+    27% { transform: translateX(-3px) rotate(-9deg); }
+    59% { transform: translateX(6px) rotate(16deg); }
+  }
+  @keyframes pawn-strike {
+    0%, 100% { rotate: 0deg; }
+    36% { rotate: -82deg; }
+    64% { rotate: 33deg; }
+  }
+  @keyframes pawn-hurt {
+    0%, 100% { transform: none; }
+    24% { transform: translateX(-5px) rotate(-17deg) scaleY(.87); }
+    54% { transform: translateX(1px) rotate(6deg); }
+  }
+  @keyframes pawn-impact {
+    0%, 100% { opacity: 0; }
+    25% { opacity: 1; }
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar-inner { gap: 8px; }
+  .topbar-tools { gap: 9px; }
+  .theme-switch { gap: 4px; }
+  .game-theme .map-surface { padding-block: 15px 18px; }
+}
+@media (max-width: 360px) {
+  .topbar-tools .rules-button { padding-left: 0; font-size: 12px; }
+  .topbar-tools .rules-button span { display: none; }
+  .switch-control { width: 35px; }
+  .switch-control input:checked + .switch-track::before { translate: 13px; }
+}
