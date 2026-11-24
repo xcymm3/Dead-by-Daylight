@@ -118,6 +118,26 @@
 .tile .terrain-art { position: absolute; inset: 0; }
 .tile-exit .terrain-art { height: calc(100% - 8px); }
 .legend .terrain-art { width: 26px; height: 21px; flex: none; }
+.wall-run-art {
+  position: absolute;
+  inset-block-start: calc(100% / 7);
+  inset-inline-start: 40%;
+  inline-size: 20%;
+  block-size: calc(100% * 5 / 7);
+  z-index: 2;
+  pointer-events: none;
+  overflow: visible;
+}
+.passage-pallet-pose {
+  transform-origin: 0 0;
+  transform: translate(1px, 26px) rotate(12deg) scale(.8, .75);
+}
+.passage-pallet[data-south="true"] .passage-pallet-pose {
+  transform: translate(5px, -26px) rotate(12deg) scale(.8, .75);
+}
+.passage-pallet[data-state="dropped"] .passage-pallet-pose {
+  transform: rotate(-73deg) scale(.85, 1.45);
+}
 
 .character-art {
   width: 90%;
@@ -148,6 +168,7 @@
 .character-impact { stroke: var(--killer); }
 
 @media (prefers-reduced-motion: no-preference) {
+  .passage-pallet-pose { transition: transform 260ms var(--ease-out); }
   .switch-track::before { transition: translate 170ms var(--ease-out); }
   .game-theme .piece-position { transition-duration: 255ms; transition-timing-function: ease-out; }
   .motion-idle { animation: pawn-idle 1.75s ease-in-out 2; }

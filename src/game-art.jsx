@@ -1,5 +1,73 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { KILLER, WIDTH } from './game.js'
+import { KILLER, PALLETS, WIDTH } from './game.js'
+
+function PalletBoards() {
+  return (
+    <>
+      <path d="M-11-18 9-20l4 37-21 4Z" fill="var(--art-wood-dark)" />
+      <path d="M-10-17-5-18l3 36-5 1Zm7-2 5-1L5 16l-5 1Zm7-1 5-1 3 36-5 1Z" fill="var(--art-wood)" />
+      <path d="m-11-12 21-3 1 5-21 3Zm2 20 21-3 1 5-21 4Z" fill="var(--art-wood-light)" />
+      <path d="M-7-10h1m12-2h1M-5 10h1m12-2h1" stroke="var(--art-line)" strokeWidth="1.4" strokeLinecap="round" />
+    </>
+  )
+}
+
+function WallSection({ from, to, sill = false }) {
+  const topX = sill ? 29 : 22
+  const lift = sill ? 4 : 12
+  const topFrom = from - lift
+  const topTo = to - lift
+  return (
+    <>
+      <path d={`M${topX} ${topTo}h14l${32 - topX} ${lift}H32Z`} fill="var(--art-stone-dark)" />
+      <path d={`M${topX} ${topFrom}V${topTo}L32 ${to}V${from}Z`} fill="var(--art-stone)" />
+      <path d={`M${topX} ${topFrom}h14V${topTo}h-14Z`}
+        fill={sill ? 'var(--art-wood-light)' : 'var(--art-stone-light)'} />
+      {!sill && (
+        <path d={Array.from({ length: 4 }, (_, i) => {
+          const y = topFrom + 10 + i * 17
+          return `M22 ${y}l10 12m-5-6v8`
+        }).join(' ')} fill="none" stroke="var(--art-mortar)" strokeWidth="1.1" />
+      )}
+    </>
+  )
+}
+
+function PassagePallet({ condition = 'ready', south = false }) {
+  return (
+    <g className="passage-pallet" data-state={condition} data-south={south}
+      transform={south ? 'translate(49 288)' : 'translate(40 32)'}>
+      {condition === 'broken' ? (
+        <>
+          <path d="m-20 5 12-10 5 1-7 5 2 2-10 6Zm18 5 11-10 5 3-7 4 2 2-9 4Z" fill="var(--art-wood)" />
+          <path d="m14-4 9-3-4 7Zm-19 17 7-1-3 5Z" fill="var(--art-wood-light)" />
+        </>
+      ) : (
+        <g className="passage-pallet-pose">
+          <ellipse cx="2" cy="5" rx="14" ry="19" fill="var(--art-shadow)" />
+          <PalletBoards />
+        </g>
+      )}
+    </g>
+  )
+}
+
+export function WallRunArt({ pallets }) {
+  const [north, south] = PALLETS
+  return (
+    <svg className="wall-run-art" viewBox="0 0 80 320" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+      <g transform="matrix(1 0 .069 1 0 0)">
+        <path d="M25 68 48 64 55 252 31 257Z" fill="var(--art-shadow)" />
+        <WallSection from={145} to={177} sill />
+        <WallSection from={68} to={145} />
+        <WallSection from={177} to={254} />
+        <path d="M29 144h14m-14 33h14" stroke="var(--art-wood)" strokeWidth="2.6" />
+      </g>
+      <PassagePallet condition={pallets?.[north]} />
+      <PassagePallet condition={pallets?.[south]} south />
+    </svg>
+  )
+}
 
 export function TerrainArt({ type, condition, open }) {
   let object
@@ -40,25 +108,7 @@ export function TerrainArt({ type, condition, open }) {
       )
       break
     case 'pallet':
-      if (condition === 'broken') {
-        object = (
-          <>
-            <path d="m17 44 17-10 7 2-11 6 4 2-14 6Z" fill="var(--art-wood)" />
-            <path d="m40 47 15-9 7 4-10 3 3 3-10 3Z" fill="var(--art-wood-light)" />
-            <path d="m36 52 8-4-4 7-5 2Zm14-18 11-4-5 7Z" fill="var(--art-wood-dark)" />
-          </>
-        )
-      } else {
-        object = (
-          <g transform={condition === 'dropped' ? 'translate(-2 33) skewY(-16) scale(1 .52)' : 'translate(1 3) skewY(-15)'}>
-            <path d="M16 27h43v31H16Z" fill="var(--art-wood-dark)" />
-            <path d="M16 27h43v4H16Z" fill="var(--art-wood-light)" />
-            <path d="M19 32h39v6H19Zm0 9h39v6H19Zm0 9h39v6H19Z" fill="var(--art-wood)" />
-            <path d="M23 31h5v25h-5Zm25 0h5v25h-5Z" fill="var(--art-wood-light)" />
-            <path d="M23 35h5m20 0h5m-30 17h5m20 0h5" stroke="var(--art-line)" strokeWidth="1.4" />
-          </g>
-        )
-      }
+      object = <g transform="translate(42 33) rotate(-50)"><PalletBoards /></g>
       break
     case 'exit':
       object = (

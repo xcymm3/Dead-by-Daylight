@@ -6,7 +6,7 @@ import {
 } from './game.js'
 import { chooseOpponentAction } from './opponent.js'
 import { loadLastReplay, saveLastReplay } from './replay.js'
-import { CharacterArt, TerrainArt } from './game-art.jsx'
+import { CharacterArt, TerrainArt, WallRunArt } from './game-art.jsx'
 import './tokens.css'
 import './styles.css'
 import './game-theme.css'
@@ -72,15 +72,16 @@ function Board({ view, actions, onAction, gameStyle, replayRound }) {
                   aria-label={label} title={label}
                   aria-disabled={!action} tabIndex={action ? 0 : -1}
                   onClick={() => action && onAction(action)}>
-                  {type !== 'empty' && (gameStyle
-                    ? <TerrainArt type={type} condition={condition} open={open} />
-                    : <TileIcon type={type} />)}
+                  {gameStyle
+                    ? (type === 'machine' || type === 'exit') && <TerrainArt type={type} condition={condition} open={open} />
+                    : type !== 'empty' && <TileIcon type={type} />}
                   {type === 'exit' && <span className="exit-name">{name}</span>}
                   {action && <span className="target-mark" aria-hidden="true" />}
                   {condition === 'repaired' && <span className="tile-check" aria-hidden="true">✓</span>}
                 </button>
               )
             })}
+            {gameStyle && <WallRunArt pallets={view?.pallets} />}
             {[KILLER, HUMAN].map(role => {
               const at = view?.positions[role]
               if (at == null) return null
