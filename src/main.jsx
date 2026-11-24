@@ -1,10 +1,10 @@
 import React, { StrictMode, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
-  HUMAN, KILLER, ROLES, WIDTH, EXITS, COURTYARD_LAYOUT, activeRole, actionsFor, coordinate, createGame, isPlacement,
-  play, project, skipKillerTurn, terrain, visibleLog,
+  HUMAN, KILLER, ROLES, WIDTH, EXITS, COURTYARD_LAYOUT, DIFFICULTIES, activeRole, actionsFor, coordinate, createGame, isPlacement,
+  project, terrain, visibleLog,
 } from './game.js'
-import { chooseOpponentAction } from './opponent.js'
+import { applyMatchAction, chooseMatchOpponentAction } from './hard-opponent.js'
 import { loadLastReplay, saveLastReplay } from './replay.js'
 import { CharacterArt, PerimeterArt, TerrainArt, WallRunArt } from './game-art.jsx'
 import './tokens.css'
@@ -147,11 +147,11 @@ function Status({ view, legacy }) {
   )
 }
 
-function Setup({ selected, onSelect, onStart }) {
+function Setup({ selected, onSelect, difficulty, onDifficulty, onStart }) {
   return (
     <section className="panel control-panel" aria-labelledby="control-title">
       <div className="panel-title"><h2 id="control-title">演练设置</h2><span className="quiet">单人模式</span></div>
-      <div className="panel-body">
+      <form className="panel-body" onSubmit={event => { event.preventDefault(); onStart() }}>
         <p className="control-lead">选择你要扮演的角色</p>
         <div className="role-list" role="group" aria-label="选择角色">
           {[HUMAN, KILLER].map(role => (
@@ -162,8 +162,19 @@ function Setup({ selected, onSelect, onStart }) {
             </button>
           ))}
         </div>
-        <button type="button" className="primary wide" onClick={onStart}>开始演练 <span aria-hidden="true">→</span></button>
-      </div>
+        <fieldset className="difficulty-options">
+          <legend>人机难度</legend>
+          <div>
+            {Object.entries(DIFFICULTIES).map(([value, name]) => (
+              <label key={value}>
+                <input type="radio" name="difficulty" value={value} checked={difficulty === value} onChange={() => onDifficulty(value)} />
+                {name}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <button type="submit" className="primary wide">开始演练 <span aria-hidden="true">→</span></button>
+      </form>
     </section>
   )
 }
@@ -195,7 +206,7 @@ function Controls({ game, view, actions, onAction, onReset, onReplay }) {
   const extras = actions.filter(action => ['repair', 'drop', 'wait'].includes(action.kind))
   return (
     <section className="panel control-panel" aria-labelledby="control-title">
-      <div className="panel-title"><h2 id="control-title">行动面板</h2><span className="quiet">你扮演{ROLES[game.player]}</span></div>
+      <div className="panel-title"><h2 id="control-title">行动面板</h2><span className="quiet">你扮演{ROLES[game.player]} · {DIFFICULTIES[game.difficulty]}</span></div>
       <div className="panel-body">
         <div className="turn-status" role="status">
           <strong>{headline}</strong>
@@ -318,6 +329,7 @@ function Rules({ dialog }) {
 
 function App() {
   const [selected, setSelected] = useState(HUMAN)
+  const [difficulty, setDifficulty] = useState('normal')
   const [game, setGame] = useState(null)
   const [gameStyle, setGameStyle] = useState(false)
   const [lastReplay, setLastReplay] = useState(loadLastReplay)
@@ -343,14 +355,14 @@ function App() {
     const skipping = !isPlacement(game) && role === KILLER && game.recovery?.remaining > 0
     if (!skipping && role === game.player) return
     const timeout = setTimeout(() => {
-      const next = skipping ? skipKillerTurn(game) : play(game, chooseOpponentAction(game))
+      const next = applyMatchAction(game, skipping ? null : chooseMatchOpponentAction(game))
       setGame(current => current === game ? next : current)
     }, skipping ? 550 : 420)
     return () => clearTimeout(timeout)
   }, [game, role])
 
   function handleAction(action) {
-    setGame(current => current === game && activeRole(current) === current.player ? play(current, action) : current)
+    setGame(current => current === game && activeRole(current) === current.player ? applyMatchAction(current, action) : current)
   }
 
   const reset = () => setGame(null)
@@ -404,7 +416,8 @@ function App() {
           <aside className="sidebar" aria-label={replayFrame ? '回放控制' : '演练控制'}>
             {replayFrame ? <ReplayPanel frame={replayFrame} lastRound={availableReplay.length - 1} onStep={stepReplay} legacy={legacyReplay} />
               : game ? <Controls game={game} view={view} actions={actions} onAction={handleAction} onReset={reset} onReplay={openReplay} />
-                : <Setup selected={selected} onSelect={setSelected} onStart={() => setGame(createGame(selected))} />}
+                : <Setup selected={selected} onSelect={setSelected} difficulty={difficulty} onDifficulty={setDifficulty}
+                  onStart={() => setGame(createGame(selected, undefined, difficulty))} />}
             <Status view={view} legacy={legacyReplay} />
             {!replayFrame && <Activity game={game} />}
           </aside>

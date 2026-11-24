@@ -7,6 +7,7 @@ export const PALLETS = [7, 27]
 export const EXITS = [2, 32]
 export const EXIT_APPROACHES = [15, 19]
 export const COURTYARD_LAYOUT = 'courtyard'
+export const DIFFICULTIES = { normal: '普通', hard: '困难' }
 export const WINDOW = 17
 export const WALLS = [12, 22]
 
@@ -42,9 +43,10 @@ export function adjacent(at) {
     .filter(next => next !== null && terrain(next))
 }
 
-export function createGame(player, seed = Math.floor(Math.random() * 0x100000000)) {
+export function createGame(player, seed = Math.floor(Math.random() * 0x100000000), difficulty = 'normal') {
   return {
     player,
+    difficulty,
     positions: { [KILLER]: null, [HUMAN]: null },
     turn: KILLER,
     round: 0,
