@@ -79,6 +79,9 @@
   --art-window: #4e989e;
   --art-green: #acf0b4;
   --art-gate-glow: #497d60;
+  --art-lamp-lit: #ffe196;
+  --art-lamp-glow: #ffc46b49;
+  --art-hatch-well: #111819;
   --font-game-display: 'DM Serif Text', 'Songti SC', SimSun, Georgia, serif;
   min-height: 100vh;
   color: var(--ink);
@@ -91,10 +94,31 @@
 .game-theme .panel { box-shadow: 0 8px 24px var(--shadow); }
 .game-theme .map-surface {
   background: radial-gradient(ellipse at 50% 8%, var(--game-lamp), var(--clear) 62%), var(--plan);
-  padding-block: 21px 25px;
+  padding-block: 38px 25px;
 }
-.game-theme .plan { max-width: 436px; }
-.game-theme .board { aspect-ratio: 5 / 5.45; }
+.game-theme .plan {
+  /* The floor is tilted as a unit. Its inverse keeps labels and standing sprites upright. */
+  --plan-upright: matrix(.9, .503, -.926, .953, 0, 0);
+  width: 76%;
+  max-width: 470px;
+  transform: matrix(.72, -.38, .70, .68, 0, 0);
+}
+.game-theme .legacy-plan { width: 65%; max-width: 388px; }
+.game-theme .columns { position: relative; z-index: 4; }
+.game-theme .courtyard-plan .columns { translate: 0 -26px; }
+.game-theme .courtyard-plan .columns span {
+  justify-self: center;
+  min-width: 15px;
+  line-height: 15px;
+  border-radius: 3px;
+  background: var(--plan);
+  color: var(--ink);
+}
+.game-theme .courtyard-plan .rows { color: var(--ink); }
+.game-theme .legacy-plan .board { aspect-ratio: 5 / 5.45; }
+.game-theme :is(.columns span, .rows span, .tile .terrain-art, .exit-name, .tile-check, .character-art) {
+  transform: var(--plan-upright);
+}
 .game-theme .tile {
   place-content: normal;
   place-items: center;
@@ -112,31 +136,44 @@
 .game-theme .tile:focus-visible { outline-offset: -4px; }
 .game-theme .target-mark { z-index: 1; }
 .game-theme .tile-exit { margin-block: 2px; }
-.game-theme .exit-name { position: absolute; bottom: 1px; font-size: 10px; }
+.game-theme .exit-name {
+  position: absolute;
+  bottom: 1px;
+  z-index: 4;
+  padding-inline: 2px;
+  border-radius: 2px;
+  background: var(--plan);
+  font-size: 10px;
+}
 .game-theme .tile-check { z-index: 1; color: var(--success); }
 .terrain-art { display: block; width: 100%; height: 100%; max-height: 100%; pointer-events: none; }
 .tile .terrain-art { position: absolute; inset: 0; }
 .tile-exit .terrain-art { height: calc(100% - 8px); }
 .legend .terrain-art { width: 26px; height: 21px; flex: none; }
-.wall-run-art {
+.wall-run-art, .perimeter-art {
   position: absolute;
-  inset-block-start: calc(100% / 7);
-  inset-inline-start: 40%;
-  inline-size: 20%;
-  block-size: calc(100% * 5 / 7);
   z-index: 2;
   pointer-events: none;
   overflow: visible;
 }
+.courtyard-plan .wall-run-art { inset: 0 auto auto calc(300% / 7); inline-size: calc(100% / 7); block-size: 100%; }
+.legacy-plan .wall-run-art { inset-block-start: calc(100% / 7); inset-inline-start: 40%; inline-size: 20%; block-size: calc(100% * 5 / 7); }
+.perimeter-art { inset: 0 auto auto calc(100% / 7); inline-size: calc(500% / 7); block-size: 100%; }
+.passage-door-leaf {
+  transform-origin: 0 0;
+  /* Swing the floor edge toward X while retaining the projected vertical edge. */
+  transform: matrix(2.611, -1.611, 1, 0, 0, 0);
+}
+.passage-door[data-state="closed"] .passage-door-leaf { transform: matrix(1, 0, 0, 1, 0, 0); }
 .passage-pallet-pose {
   transform-origin: 0 0;
-  transform: translate(1px, 26px) rotate(12deg) scale(.8, .75);
+  transform: translate(7px, 24px) skewX(-26deg) scale(.8, .72);
 }
 .passage-pallet[data-south="true"] .passage-pallet-pose {
-  transform: translate(5px, -26px) rotate(12deg) scale(.8, .75);
+  transform: translate(5px, -28px) skewX(-26deg) scale(.8, .72);
 }
 .passage-pallet[data-state="dropped"] .passage-pallet-pose {
-  transform: rotate(-73deg) scale(.85, 1.45);
+  transform: scale(1.16, 1.21);
 }
 
 .character-art {
@@ -168,7 +205,7 @@
 .character-impact { stroke: var(--killer); }
 
 @media (prefers-reduced-motion: no-preference) {
-  .passage-pallet-pose { transition: transform 260ms var(--ease-out); }
+  .passage-pallet-pose, .passage-door-leaf { transition: transform 260ms var(--ease-out); }
   .switch-track::before { transition: translate 170ms var(--ease-out); }
   .game-theme .piece-position { transition-duration: 255ms; transition-timing-function: ease-out; }
   .motion-idle { animation: pawn-idle 1.75s ease-in-out 2; }
@@ -222,9 +259,15 @@
   .topbar-inner { gap: 8px; }
   .topbar-tools { gap: 9px; }
   .theme-switch { gap: 4px; }
-  .game-theme .map-surface { padding-block: 15px 18px; }
+  .game-theme .map-surface { padding-block: 29px 18px; }
+  .game-theme .courtyard-plan .columns { translate: 0 -12px; }
+  .game-theme .courtyard-plan { width: 77%; }
+  .game-theme .legacy-plan { width: 72%; }
 }
 @media (max-width: 360px) {
+  .product { gap: 7px; font-size: 13px; }
+  .product strong { white-space: nowrap; }
+  .product-icon { width: 26px; height: 26px; }
   .topbar-tools .rules-button { padding-left: 0; font-size: 12px; }
   .topbar-tools .rules-button span { display: none; }
   .switch-control { width: 35px; }

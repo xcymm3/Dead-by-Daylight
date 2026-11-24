@@ -1,24 +1,32 @@
 import React, { StrictMode, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
-  HUMAN, KILLER, ROLES, activeRole, actionsFor, coordinate, createGame, isPlacement,
+  HUMAN, KILLER, ROLES, WIDTH, EXITS, COURTYARD_LAYOUT, activeRole, actionsFor, coordinate, createGame, isPlacement,
   play, project, skipKillerTurn, terrain, visibleLog,
 } from './game.js'
 import { chooseOpponentAction } from './opponent.js'
 import { loadLastReplay, saveLastReplay } from './replay.js'
-import { CharacterArt, TerrainArt, WallRunArt } from './game-art.jsx'
+import { CharacterArt, PerimeterArt, TerrainArt, WallRunArt } from './game-art.jsx'
 import './tokens.css'
 import './styles.css'
 import './game-theme.css'
 
-const TILE_NAMES = { empty: '空格', machine: '机器', window: '窗户', wall: '墙', pallet: '木板', exit: '出口' }
+const TILE_NAMES = { empty: '空格', machine: '灯', window: '窗户', wall: '墙', pallet: '门', exit: '地窖' }
+const LEGACY_NAMES = { machine: '机器', pallet: '木板', exit: '出口' }
+const ART_TYPES = { machine: 'lamp', pallet: 'door', exit: 'hatch' }
 const LEGEND = ['machine', 'wall', 'window', 'pallet', 'exit']
-const CELLS = Array.from({ length: 35 }, (_, i) => i)
+const LEGACY_CELLS = Array.from({ length: 35 }, (_, i) => i)
+const COURTYARD_CELLS = Array.from({ length: 35 }, (_, slot) => {
+  const row = Math.floor(slot / 7)
+  const column = slot % 7
+  if (column === 0 || column === 6) return row === 2 ? EXITS[Number(column === 6)] : null
+  return (row + 1) * WIDTH + column - 1
+})
 const ROLES_INFO = {
-  [HUMAN]: '修好 3 台机器，再从任一出口撤离。',
-  [KILLER]: '根据修机进度巡查，将人类生命降至 0。',
+  [HUMAN]: '点亮 3 盏灯，再从任一地窖撤离。',
+  [KILLER]: '根据亮灯数量巡查，将人类生命降至 0。',
 }
-const RECOVERY = { hit: '命中后恢复', vault: '翻窗中', break: '砸板中', stun: '木板眩晕' }
+const RECOVERY = { hit: '命中后恢复', vault: '翻窗中', break: '砸门中', stun: '关门撞晕' }
 
 function TileIcon({ type }) {
   return <i aria-hidden="true" className={`tile-icon icon-${type}`} />
@@ -29,15 +37,18 @@ function actionLabel(action) {
   switch (action.kind) {
     case 'spawn': return `在 ${at} 出生`
     case 'vault':
-      if (terrain(action.land) === 'exit') return `从 ${at} 斜翻进入${coordinate(action.land)}`
-      return `从 ${at}${terrain(action.to) === 'window' ? '翻窗' : '翻板'}至 ${coordinate(action.land)}`
-    case 'break': return `砸碎 ${at} 的木板`
+      return `从 ${at}${terrain(action.to) === 'window' ? '翻窗' : '翻门'}至 ${coordinate(action.land)}`
+    case 'break': return `砸碎 ${at} 的门`
     case 'sidestep': return `向侧面移动至 ${at}`
-    default: return `移动至 ${at}`
+    default: return terrain(action.to) === 'exit' ? `进入${at}` : `移动至 ${at}`
   }
 }
 
-function Board({ view, actions, onAction, gameStyle, replayRound }) {
+function Board({ view, actions, onAction, gameStyle, replayRound, legacy }) {
+  const cells = legacy ? LEGACY_CELLS : COURTYARD_CELLS
+  const columnCount = legacy ? 5 : 7
+  const tileName = type => (legacy && LEGACY_NAMES[type]) || TILE_NAMES[type]
+  const artType = type => (legacy ? type : ART_TYPES[type]) ?? type
   const byTarget = new Map(actions
     .filter(action => ['spawn', 'move', 'vault', 'break', 'sidestep'].includes(action.kind))
     .map(action => [action.to, action]))
@@ -48,48 +59,52 @@ function Board({ view, actions, onAction, gameStyle, replayRound }) {
         <span className="mono map-size">5 × 5</span>
       </div>
       <div className="map-surface">
-        <div className="plan">
+        <div className={`plan ${legacy ? 'legacy-plan' : 'courtyard-plan'}`}>
           <div className="columns mono" aria-hidden="true">
-            {[...'ABCDE'].map(letter => <span key={letter}>{letter}</span>)}
+            {[...'ABCDE'].map((letter, i) => <span key={letter} style={{ gridColumn: i + (legacy ? 1 : 2) }}>{letter}</span>)}
           </div>
           <div className="rows mono" aria-hidden="true">
-            {[1, 2, 3, 4, 5].map(row => <span key={row} style={{ gridRow: row + 1 }}>{row}</span>)}
+            {[1, 2, 3, 4, 5].map(row => <span key={row} style={{ gridRow: row + (legacy ? 1 : 0) }}>{row}</span>)}
           </div>
           <div className="board" aria-label="演练地图">
-            {CELLS.map(at => {
+            {cells.map((at, slot) => {
               const type = terrain(at)
-              if (!type) return <div key={at} aria-hidden="true" />
+              if (!type) return <div key={slot} aria-hidden="true" />
               const action = byTarget.get(at)
               const condition = view?.pallets[at] ?? (view?.repaired?.includes(at) ? 'repaired' : '')
               const open = type === 'exit' && view?.count >= 3
               const piece = Object.keys(ROLES).filter(role => view?.positions[role] === at)
-              const name = type === 'exit' ? coordinate(at) : `${coordinate(at)} ${TILE_NAMES[type]}`
-              const status = { repaired: '已修好', dropped: '已放下', broken: '已砸碎' }[condition]
+              const name = type === 'exit' ? coordinate(at, legacy) : `${coordinate(at)} ${tileName(type)}`
+              const status = legacy ? { repaired: '已修好', dropped: '已放下', broken: '已砸碎' }[condition]
+                : { repaired: '已点亮', dropped: '已关上', broken: '已砸碎' }[condition] ??
+                  (type === 'pallet' ? '已打开' : type === 'machine' ? '未点亮' : null)
               const label = [name, status, type === 'exit' && (open ? '已开放' : '未开放'),
                 ...piece.map(role => ROLES[role]), action && actionLabel(action)].filter(Boolean).join('，')
               return (
-                <button key={at} type="button" className={`tile tile-${type} ${condition} ${open ? 'open' : ''}`}
+                <button key={slot} type="button" className={`tile tile-${type} ${condition} ${open ? 'open' : ''}`}
                   aria-label={label} title={label}
                   aria-disabled={!action} tabIndex={action ? 0 : -1}
                   onClick={() => action && onAction(action)}>
                   {gameStyle
-                    ? (type === 'machine' || type === 'exit') && <TerrainArt type={type} condition={condition} open={open} />
-                    : type !== 'empty' && <TileIcon type={type} />}
+                    ? (type === 'machine' || type === 'exit') && <TerrainArt type={artType(type)} condition={condition} open={open} />
+                    : type !== 'empty' && <TileIcon type={artType(type)} />}
                   {type === 'exit' && <span className="exit-name">{name}</span>}
                   {action && <span className="target-mark" aria-hidden="true" />}
                   {condition === 'repaired' && <span className="tile-check" aria-hidden="true">✓</span>}
                 </button>
               )
             })}
-            {gameStyle && <WallRunArt pallets={view?.pallets} />}
+            {gameStyle && !legacy && <PerimeterArt />}
+            {gameStyle && <WallRunArt pallets={view?.pallets} legacy={legacy} />}
             {[KILLER, HUMAN].map(role => {
               const at = view?.positions[role]
               if (at == null) return null
               const shared = view.positions[HUMAN] === view.positions[KILLER]
+              const slot = cells.indexOf(at)
               return (
                 <div key={role} className={`piece-position ${shared ? `shared-${role}` : ''}`}
-                  style={{ '--col': at % 5, '--row': Math.floor(at / 5) }} aria-hidden="true">
-                  {gameStyle ? <CharacterArt role={role} at={at} health={view.health} replayRound={replayRound} />
+                  style={{ '--col': slot % columnCount, '--row': Math.floor(slot / columnCount) }} aria-hidden="true">
+                  {gameStyle ? <CharacterArt role={role} at={slot} columns={columnCount} health={view.health} replayRound={replayRound} />
                     : <span className={`piece ${role}`}>{role === HUMAN ? '人' : '屠'}</span>}
                 </div>
               )
@@ -99,14 +114,14 @@ function Board({ view, actions, onAction, gameStyle, replayRound }) {
       </div>
       <ul className="legend" aria-label="地图图例">
         {LEGEND.map(type => (
-          <li key={type}>{gameStyle ? <TerrainArt type={type} /> : <TileIcon type={type} />}{TILE_NAMES[type]}</li>
+          <li key={type}>{gameStyle ? <TerrainArt type={artType(type)} /> : <TileIcon type={artType(type)} />}{tileName(type)}</li>
         ))}
       </ul>
     </section>
   )
 }
 
-function Status({ view }) {
+function Status({ view, legacy }) {
   const count = view?.count ?? 0
   const health = view?.health ?? 2
   return (
@@ -114,7 +129,7 @@ function Status({ view }) {
       <div className="panel-title"><h2 id="status-title">对局状态</h2></div>
       <div className="metrics">
         <div className="metric">
-          <div className="metric-heading"><span>已修机器</span><strong className="mono">{count}<small> / 4</small></strong></div>
+          <div className="metric-heading"><span>{legacy ? '已修机器' : '已点亮的灯'}</span><strong className="mono">{count}<small> / 4</small></strong></div>
           <div className="meter" aria-hidden="true">
             {[1, 2, 3, 4].map(value => <span key={value} className={count >= value ? 'filled' : ''} />)}
           </div>
@@ -125,7 +140,7 @@ function Status({ view }) {
             {[1, 2].map(value => <span key={value} className={health >= value ? 'filled' : ''} />)}
           </div>
         </div>
-        <div className="exit-status"><TileIcon type="exit" /><span>撤离出口</span><strong>{count >= 3 ? '已开放' : '修好 3 台后开放'}</strong></div>
+        <div className="exit-status"><TileIcon type={legacy ? 'exit' : 'hatch'} /><span>{legacy ? '撤离出口' : '撤离地窖'}</span><strong>{count >= 3 ? '已开启' : legacy ? '修好 3 台后开放' : '点亮 3 盏后开启'}</strong></div>
       </div>
     </section>
   )
@@ -168,13 +183,13 @@ function Controls({ game, view, actions, onAction, onReset, onReplay }) {
     headline = `屠夫跳过本回合`
     instruction = `${RECOVERY[recovery.kind]}，还需跳过 ${recovery.remaining} 个屠夫回合。`
   } else if (sidestep) {
-    instruction = '木板眩晕结束，先选择移到木板左侧或右侧。'
+    instruction = '眩晕结束，先选择移到门的左侧或右侧。'
   } else if (role === KILLER && personal) {
     instruction = '点击高亮格子移动，也可以提前结束行动。'
   }
   if (view.winner) {
     headline = view.winner === game.player ? '演练成功' : '演练结束'
-    instruction = view.winner === HUMAN ? '人类修好机器并成功撤离。' : '人类生命归零，屠夫获胜。'
+    instruction = view.winner === HUMAN ? '人类点亮了灯，并成功从地窖撤离。' : '人类生命归零，屠夫获胜。'
   }
   const extras = actions.filter(action => ['repair', 'drop', 'wait'].includes(action.kind))
   return (
@@ -197,7 +212,7 @@ function Controls({ game, view, actions, onAction, onReset, onReplay }) {
               <button key={`${action.kind}-${action.to}`} type="button"
                 className={action.kind === 'repair' ? 'primary' : 'secondary'}
                 onClick={() => onAction(action)}>
-                {action.kind === 'repair' ? '原地修机' : action.kind === 'drop' ? `放下 ${coordinate(action.to)} 木板`
+                {action.kind === 'repair' ? '原地点灯' : action.kind === 'drop' ? `关上 ${coordinate(action.to)} 的门`
                   : role === KILLER ? '结束行动' : '原地等待'}
               </button>
             ))}
@@ -214,7 +229,7 @@ function Controls({ game, view, actions, onAction, onReset, onReplay }) {
   )
 }
 
-function ReplayPanel({ frame, lastRound, onStep }) {
+function ReplayPanel({ frame, lastRound, onStep, legacy }) {
   return (
     <section className="panel control-panel" aria-labelledby="replay-title">
       <div className="panel-title">
@@ -228,7 +243,7 @@ function ReplayPanel({ frame, lastRound, onStep }) {
             {[HUMAN, KILLER].map(role => (
               <div key={role}>
                 <dt><span className={`piece ${role}`} aria-hidden="true">{ROLES[role][0]}</span>{ROLES[role]}</dt>
-                <dd className="mono">{coordinate(frame.positions[role])}</dd>
+                <dd className="mono">{coordinate(frame.positions[role], legacy)}</dd>
               </div>
             ))}
           </dl>
@@ -277,22 +292,22 @@ function Rules({ dialog }) {
         </section>
         <section className="rules-role rules-human" aria-labelledby="rules-human-title">
           <h2 id="rules-human-title"><span className="piece human" aria-hidden="true">人</span>扮演人类</h2>
-          <p className="rules-goal">修好任意 <strong>3 台机器</strong>，从地图上方或下方的出口离开即可获胜。你有 <strong>2 点生命</strong>，可以看到屠夫的位置，但不能主动走进他所在的格子。</p>
+          <p className="rules-goal">点亮任意 <strong>3 盏灯</strong>，再进入任一<strong>地窖</strong>即可获胜。你有 <strong>2 点生命</strong>，可以看到屠夫的位置，但不能主动走进他所在的格子。</p>
           <ul className="rules-actions">
-            <li><strong>修机</strong>　先走上机器格，下次行动点「原地修机」，就能修好这台机器。</li>
-            <li><strong>翻窗和翻板</strong>　点击相邻的窗户或已放下的木板，即可沿原方向跨到对面空格。移动、修机、翻越和放板各用 1 次行动。</li>
-            <li><strong>放板</strong>　站在还没放过的木板上下左右任一相邻格，在行动面板点放板按钮，如「放下 C1 木板」。如果屠夫正站在板上，他会被砸晕。</li>
-            <li><strong>逃生</strong>　出口开放后，站在对应的木板格，点击出口即可离开。如果木板已放下，从它的左侧或右侧点击木板，会<strong>斜翻进出口</strong>并立即获胜。</li>
+            <li><strong>点灯</strong>　先走到灯所在格，下次行动点「原地点灯」。</li>
+            <li><strong>开着的门</strong>　开局两扇门都开着，双方可以直接走过门格。站在门旁的上下左右相邻格，可以在行动面板关门。如果屠夫正站在门格，他会被撞晕。</li>
+            <li><strong>翻窗和翻门</strong>　点击相邻的窗户或关上的门，即可沿原方向跨到对面的空格。移动、点灯、翻越和关门各用 1 次行动。</li>
+            <li><strong>从地窖撤离</strong>　点亮 3 盏灯后，两座地窖门会开启。站在 <strong>A3</strong> 点击左侧地窖，或站在 <strong>E3</strong> 点击右侧地窖，即可撤离。</li>
           </ul>
         </section>
         <section className="rules-role rules-killer" aria-labelledby="rules-killer-title">
           <h2 id="rules-killer-title"><span className="piece killer" aria-hidden="true">屠</span>扮演屠夫</h2>
-          <p className="rules-goal">找到人类，让他的<strong>生命归零</strong>即可获胜。你能看到人类的剩余生命和已修机器数量，人类的位置、行动和修好的具体机器都隐藏。</p>
+          <p className="rules-goal">找到人类，让他的<strong>生命归零</strong>即可获胜。你能看到人类的剩余生命和亮灯总数。人类的位置、行动和具体哪盏灯亮起都隐藏。</p>
           <ul className="rules-actions">
             <li><strong>命中</strong>　移动到人类所在格会自动扣除他 1 点生命。你的本轮行动立即结束，并跳过接下来的 <strong>2 个屠夫回合</strong>。</li>
             <li><strong>翻窗</strong>　点击相邻的窗户后先留在原地。跳过下一个屠夫回合，才落到窗对面的空格。</li>
-            <li><strong>砸板</strong>　尝试经过已放下的木板时，你会停在板前。跳过下一个屠夫回合，把木板砸碎后便可通行。</li>
-            <li><strong>被板砸晕</strong>　如果人类在你站在木板上时放板，你会跳过 2 个屠夫回合。恢复后的第一步必须走到木板左侧或右侧。</li>
+            <li><strong>砸门</strong>　尝试经过关上的门时，你会停在门前。跳过下一个屠夫回合，把门砸碎后便可通行。</li>
+            <li><strong>被门撞晕</strong>　站在门格时被人类关门，你会跳过 2 个屠夫回合。恢复后的第一步必须走到门的左侧或右侧。</li>
           </ul>
         </section>
       </div>
@@ -310,6 +325,7 @@ function App() {
   const completedReplay = game?.winner ? game.replay : null
   const availableReplay = completedReplay ?? lastReplay
   const replayFrame = replayIndex === null ? null : availableReplay?.[replayIndex]
+  const legacyReplay = Boolean(replayFrame && replayFrame.layout !== COURTYARD_LAYOUT)
   const role = game && activeRole(game)
   const view = replayFrame ?? (game && project(game, game.player))
   const actions = !replayFrame && game && role === game.player ? actionsFor(game) : []
@@ -365,7 +381,8 @@ function App() {
         <div className="workspace-heading">
           <div>
             <h1>{replayFrame ? '对局回放' : '撤离演练'}</h1>
-            <p>{replayFrame ? '从出生位置开始，查看双方在每回合结束时的位置。' : '选择人类或屠夫，与电脑对手进行回合制对局。'}</p>
+            <p>{legacyReplay ? '旧地图回放，显示原对局的地形和出口位置。'
+              : replayFrame ? '从出生位置开始，查看双方在每回合结束时的位置。' : '选择人类或屠夫，与电脑对手进行回合制对局。'}</p>
           </div>
           <div className="workspace-tools">
             {replayFrame ? (
@@ -382,12 +399,12 @@ function App() {
         </div>
         <div className="workspace-layout">
           <Board key={Boolean(replayFrame)} view={view} actions={actions} onAction={handleAction}
-            gameStyle={gameStyle} replayRound={replayFrame?.round ?? null} />
+            gameStyle={gameStyle} replayRound={replayFrame?.round ?? null} legacy={legacyReplay} />
           <aside className="sidebar" aria-label={replayFrame ? '回放控制' : '演练控制'}>
-            {replayFrame ? <ReplayPanel frame={replayFrame} lastRound={availableReplay.length - 1} onStep={stepReplay} />
+            {replayFrame ? <ReplayPanel frame={replayFrame} lastRound={availableReplay.length - 1} onStep={stepReplay} legacy={legacyReplay} />
               : game ? <Controls game={game} view={view} actions={actions} onAction={handleAction} onReset={reset} onReplay={openReplay} />
                 : <Setup selected={selected} onSelect={setSelected} onStart={() => setGame(createGame(selected))} />}
-            <Status view={view} />
+            <Status view={view} legacy={legacyReplay} />
             {!replayFrame && <Activity game={game} />}
           </aside>
         </div>

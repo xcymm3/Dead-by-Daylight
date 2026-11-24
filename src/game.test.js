@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  HUMAN, KILLER, activeRole, actionsFor, createGame, play, project, skipKillerTurn, terrain, visibleLog,
+  HUMAN, KILLER, COURTYARD_LAYOUT, activeRole, actionsFor, createGame, play, project, skipKillerTurn, terrain, visibleLog,
 } from './game.js'
 import { chooseOpponentAction } from './opponent.js'
 
@@ -67,7 +67,7 @@ test('the human vaults immediately and the killer lands after the skipped turn',
   assert.deepEqual(game.recovery, { kind: 'hit', remaining: 2 })
 })
 
-test('a pallet stun forces the first move after recovery to either side', () => {
+test('closing a door on the killer forces the first move after recovery to either side', () => {
   const drop = game => play(game, { kind: 'drop', to: 7 })
   const overlapping = position(7, 7, HUMAN)
   assert.equal(drop(overlapping), overlapping)
@@ -86,7 +86,7 @@ test('a pallet stun forces the first move after recovery to either side', () => 
   assert.equal(game.recovery, null)
 })
 
-test('a remotely dropped pallet stays hidden until the killer attempts to cross', () => {
+test('a remotely closed door stays hidden until the killer attempts to cross', () => {
   const before = position(6, 8, HUMAN, { repaired: [5] })
   let game = play(before, { kind: 'drop', to: 7 })
   const alternate = { ...wait(before), positions: { [KILLER]: 6, [HUMAN]: 15 }, repaired: [9] }
@@ -102,8 +102,8 @@ test('a remotely dropped pallet stays hidden until the killer attempts to cross'
   assert.equal(project(game, KILLER).pallets[7], 'broken')
 })
 
-test('repair consumes one human turn and exit access starts at three repairs', () => {
-  const nearExit = position(29, 7, HUMAN, { repaired: [5, 9] })
+test('lighting a lamp consumes one human turn and both hatches open at three lit lamps', () => {
+  const nearExit = position(29, 15, HUMAN, { repaired: [5, 9] })
   assert.equal(move(nearExit, 2), nearExit)
   let game = position(29, 25, HUMAN, { repaired: [5, 9] })
   assert.equal(wait(game), game)
@@ -114,28 +114,36 @@ test('repair consumes one human turn and exit access starts at three repairs', (
   assert.equal(move({ ...nearExit, repaired: game.repaired }, 2).winner, HUMAN)
 })
 
-test('a side vault into either open exit wins immediately', () => {
-  for (const [pallet, exit] of [[7, 2], [27, 32]]) {
+test('an open door is walkable and a closed door remains vaultable after lighting the lamps', () => {
+  for (const door of [7, 27]) {
     for (const side of [-1, 1]) {
-      const request = { kind: 'vault', to: pallet }
-      const locked = position(29, pallet + side, HUMAN, { repaired: [5, 9], pallets: { [pallet]: 'dropped' } })
-      assert.equal(move(locked, exit), locked)
-      const horizontal = play(locked, request)
-      assert.equal(horizontal.positions[HUMAN], pallet - side)
-      assert.equal(horizontal.winner, null)
-
-      const open = { ...locked, repaired: [5, 9, 25] }
-      assert.equal(move(open, exit), open)
-      assert.deepEqual(chooseOpponentAction(open), { ...request, land: exit })
-      const escaped = play(open, request)
-      assert.equal(escaped.positions[HUMAN], exit)
-      assert.equal(escaped.winner, HUMAN)
-      assert.equal(escaped.replay.at(-1).positions[HUMAN], exit)
-      assert.equal(escaped.replay.at(-1).winner, HUMAN)
+      const open = position(29, door + side, HUMAN, { repaired: [5, 9, 25] })
+      assert.equal(move(open, door).positions[HUMAN], door)
+      const closed = { ...open, pallets: { [door]: 'dropped' } }
+      assert.equal(move(closed, door), closed)
+      const vault = play(closed, { kind: 'vault', to: door })
+      assert.equal(vault.positions[HUMAN], door - side)
+      assert.equal(vault.winner, null)
     }
   }
 })
 
+test('only the human on the matching edge square can enter an open cellar', () => {
+  const repaired = [5, 9, 25]
+  for (const [approach, exit] of [[15, 2], [19, 32]]) {
+    const near = position(29, approach, HUMAN, { repaired })
+    const wrongSquare = position(29, approach + 5, HUMAN, { repaired })
+    assert.equal(move(wrongSquare, exit), wrongSquare)
+    assert.equal(move({ ...near, repaired: [5, 9] }, exit).winner, null)
+    const killerAtExit = position(approach, 25, KILLER, { repaired })
+    assert.equal(move(killerAtExit, exit), killerAtExit)
+    assert.deepEqual(chooseOpponentAction(near), { kind: 'move', to: exit, land: exit })
+    const escaped = move(near, exit)
+    assert.equal(escaped.winner, HUMAN)
+    assert.equal(escaped.replay.at(-1).layout, COURTYARD_LAYOUT)
+    assert.equal(escaped.replay.at(-1).positions[HUMAN], exit)
+  }
+})
 test('replay records spawns, completed rounds and the final hit', () => {
   let game = play(createGame(KILLER), { kind: 'spawn', to: 6 })
   assert.equal(game.replay.length, 0)

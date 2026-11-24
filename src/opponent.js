@@ -1,5 +1,5 @@
 import {
-  HUMAN, KILLER, EXITS, MACHINES, PALLETS, activeRole, actionsFor, adjacent,
+  HUMAN, KILLER, EXITS, EXIT_APPROACHES, MACHINES, activeRole, actionsFor, adjacent,
   isPlacement, movement, project,
 } from './game.js'
 
@@ -60,7 +60,7 @@ function scoreKiller(view, action) {
   if (action.kind === 'wait') return -100
   const next = action.kind === 'break' ? action.to : action.land
   const distance = routes(view, KILLER, next)
-  const goals = view.count >= 3 ? PALLETS : MACHINES
+  const goals = view.count >= 3 ? EXIT_APPROACHES : MACHINES
   const priority = Math.min(...goals.map(at => (distance.get(at) ?? 10) + (view.visits[at] ?? 0) * 1.3))
   const delay = { break: 1.1, vault: 0.9 }
   return -priority - (view.visits[next] ?? 0) * 1.6 - (delay[action.kind] ?? 0)

@@ -5,6 +5,8 @@ export const WIDTH = 5
 export const MACHINES = [5, 9, 25, 29]
 export const PALLETS = [7, 27]
 export const EXITS = [2, 32]
+export const EXIT_APPROACHES = [15, 19]
+export const COURTYARD_LAYOUT = 'courtyard'
 export const WINDOW = 17
 export const WALLS = [12, 22]
 
@@ -21,15 +23,22 @@ export function terrain(at) {
 export const SPAWNS = Array.from({ length: 25 }, (_, i) => i + 5)
   .filter(at => terrain(at) === 'empty')
 
-export function coordinate(at) {
-  if (at === EXITS[0]) return '北出口'
-  if (at === EXITS[1]) return '南出口'
+export function coordinate(at, legacy = false) {
+  if (at === EXITS[0]) return legacy ? '北出口' : '西地窖'
+  if (at === EXITS[1]) return legacy ? '南出口' : '东地窖'
   return `${'ABCDE'[at % WIDTH]}${Math.floor(at / WIDTH)}`
 }
 
 export function adjacent(at) {
+  const exit = EXITS.indexOf(at)
+  if (exit !== -1) return [EXIT_APPROACHES[exit]]
   const column = at % WIDTH
-  return [at - WIDTH, column > 0 ? at - 1 : null, column < 4 ? at + 1 : null, at + WIDTH]
+  return [
+    at >= 10 ? at - WIDTH : null,
+    column > 0 ? at - 1 : at === EXIT_APPROACHES[0] ? EXITS[0] : null,
+    column < 4 ? at + 1 : at === EXIT_APPROACHES[1] ? EXITS[1] : null,
+    at < 25 ? at + WIDTH : null,
+  ]
     .filter(next => next !== null && terrain(next))
 }
 
@@ -87,25 +96,18 @@ export function isPlacement(game) {
 export function movement(view, role, from, to) {
   const tile = terrain(to)
   if (tile === 'wall' || !tile) return null
-  const exitAllowed = at => role === HUMAN && view.count >= 3
-    && from === at + (at === EXITS[0] ? WIDTH : -WIDTH)
-  if (tile === 'exit' && !exitAllowed(to)) return null
+  if (tile === 'exit' && (role !== HUMAN || view.count < 3 || from !== EXIT_APPROACHES[EXITS.indexOf(to)])) return null
 
   const droppedPallet = tile === 'pallet' && view.pallets[to] === 'dropped'
   if (droppedPallet && role === KILLER) {
     return { kind: 'break', to, land: from }
   }
-  if (droppedPallet && view.count >= 3 && Math.abs(from - to) === 1) {
-    const exit = EXITS.find(at => Math.abs(at - to) === WIDTH)
-    if (exit !== undefined) return { kind: 'vault', to, land: exit }
-  }
-
   const vault = tile === 'window' || droppedPallet
   const land = vault ? to + (to - from) : to
   if (vault) {
     const landing = terrain(land)
     if (!adjacent(to).includes(land)) return null
-    if (landing !== 'empty' && !(tile === 'pallet' && landing === 'exit' && view.count >= 3)) return null
+    if (landing !== 'empty') return null
   }
   if (role === HUMAN && land === view.positions[KILLER]) return null
   return { kind: vault ? 'vault' : 'move', to, land }
@@ -152,7 +154,7 @@ export function visibleLog(game) {
 
 function captureRound(game) {
   const { round, positions, health, repaired, pallets, winner } = game
-  const frame = { round, positions, health, repaired, count: repaired.length, pallets, winner }
+  const frame = { layout: COURTYARD_LAYOUT, round, positions, health, repaired, count: repaired.length, pallets, winner }
   return { ...game, replay: [...game.replay, frame] }
 }
 
@@ -194,7 +196,7 @@ export function skipKillerTurn(game) {
         ...next,
         pallets: { ...next.pallets, [recovery.to]: 'broken' },
         knownPallets: { ...next.knownPallets, [recovery.to]: 'broken' },
-      }, `屠夫砸碎了 ${coordinate(recovery.to)} 的木板。`, KILLER)
+      }, `屠夫砸碎了 ${coordinate(recovery.to)} 的门。`, KILLER)
     }
   }
   return endTurn(next)
@@ -216,18 +218,18 @@ export function play(game, request) {
 function playHuman(game, { kind, to, land }) {
   if (kind === 'repair') {
     const repaired = [...game.repaired, to]
-    const next = record({ ...game, repaired }, `人类修好了 ${coordinate(to)} 的机器。`, HUMAN)
-    return endTurn(repaired.length === 3 ? record(next, '已修好 3 台机器，出口开放。') : next)
+    const next = record({ ...game, repaired }, `人类点亮了 ${coordinate(to)} 的灯。`, HUMAN)
+    return endTurn(repaired.length === 3 ? record(next, '已点亮 3 盏灯，地窖门开启。') : next)
   }
   if (kind === 'drop') {
     let next = record({ ...game, pallets: { ...game.pallets, [to]: 'dropped' } },
-      `人类放下了 ${coordinate(to)} 的木板。`, HUMAN)
+      `人类关上了 ${coordinate(to)} 的门。`, HUMAN)
     if (game.positions[KILLER] === to) {
       next = record({
         ...next,
         knownPallets: { ...next.knownPallets, [to]: 'dropped' },
         recovery: { kind: 'stun', remaining: 2 },
-      }, '屠夫被木板砸晕，跳过 2 个回合。', KILLER)
+      }, '屠夫被关上的门撞晕，跳过 2 个回合。', KILLER)
     }
     return endTurn(next)
   }
@@ -235,9 +237,9 @@ function playHuman(game, { kind, to, land }) {
 
   const moved = setPosition(game, HUMAN, land)
   if (EXITS.includes(land)) {
-    return captureRound(record({ ...moved, winner: HUMAN }, '人类成功从出口撤离。'))
+    return captureRound(record({ ...moved, winner: HUMAN }, '人类成功进入地窖撤离。'))
   }
-  const verb = kind === 'move' ? '移动到' : terrain(to) === 'window' ? '翻窗抵达' : '翻板抵达'
+  const verb = kind === 'move' ? '移动到' : terrain(to) === 'window' ? '翻窗抵达' : '翻门抵达'
   return endTurn(record(moved, `人类${verb} ${coordinate(land)}。`, HUMAN))
 }
 
@@ -248,7 +250,7 @@ function playKiller(game, { kind, to, land }) {
       ...game,
       knownPallets: { ...game.knownPallets, [to]: 'dropped' },
       recovery: { kind: 'break', remaining: 1, to },
-    }, `屠夫在板前停步，下回合砸碎 ${coordinate(to)} 的木板。`, KILLER))
+    }, `屠夫在门前停步，下回合砸碎 ${coordinate(to)} 的门。`, KILLER))
   }
   if (kind === 'vault') {
     return endTurn(record({
