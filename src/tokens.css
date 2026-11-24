@@ -1,0 +1,32 @@
+/* Hallmark · macrostructure: operations workspace · tone: modern-minimal · anchor hue: cobalt */
+/* Hallmark · pre-emit critique: P4 H5 E4 S4 R5 V4 */
+:root {
+  color-scheme: light;
+  --paper: #edf2f8;
+  --surface: #ffffff;
+  --plan: #f5f8fc;
+  --tile: #fbfdff;
+  --ink: #172334;
+  --text: #435167;
+  --muted: #586980;
+  --border: #dbe4ee;
+  --grid-line: #cdd9e8;
+  --grid-dot: #dce5f0;
+  --accent: #2459c1;
+  --accent-hover: #1d48a0;
+  --accent-soft: #eaf2ff;
+  --accent-line: #a4bdf0;
+  --human: #1c55ac;
+  --killer: #953e34;
+  --killer-soft: #f9eeea;
+  --success: #236252;
+  --success-soft: #eaf5f0;
+  --wall: #e7edf5;
+  --shadow: #203a5320;
+  --backdrop: #18284272;
+  --clear: transparent;
+  --font-ui: Geist, Inter, 'Microsoft YaHei UI', 'PingFang SC', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Cascadia Mono', Consolas, 'Microsoft YaHei UI', monospace;
+  --radius: 8px;
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+}
