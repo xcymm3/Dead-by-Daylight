@@ -130,8 +130,35 @@ test('a side vault into either open exit wins immediately', () => {
       const escaped = play(open, request)
       assert.equal(escaped.positions[HUMAN], exit)
       assert.equal(escaped.winner, HUMAN)
+      assert.equal(escaped.replay.at(-1).positions[HUMAN], exit)
+      assert.equal(escaped.replay.at(-1).winner, HUMAN)
     }
   }
+})
+
+test('replay records spawns, completed rounds and the final hit', () => {
+  let game = play(createGame(KILLER), { kind: 'spawn', to: 6 })
+  assert.equal(game.replay.length, 0)
+  game = play(game, { kind: 'spawn', to: 8 })
+  game = move(move(game, 7), 8)
+  assert.equal(game.replay.length, 1)
+  assert.equal(project(game, KILLER).replay, undefined)
+
+  game = move(game, 13)
+  game = wait(skipKillerTurn(game))
+  game = wait(skipKillerTurn(game))
+  assert.equal(game.round, 4)
+  game = move(game, 13)
+  assert.equal(game.winner, KILLER)
+  assert.deepEqual(game.replay.map(frame => frame.round), [0, 1, 2, 3, 4])
+  assert.deepEqual(game.replay.map(frame => frame.positions), [
+    { killer: 6, human: 8 },
+    { killer: 8, human: 13 },
+    { killer: 8, human: 13 },
+    { killer: 8, human: 13 },
+    { killer: 13, human: 13 },
+  ])
+  assert.equal(game.replay.at(-1).winner, KILLER)
 })
 
 test('both computer roles can play complete games through the normal actions', () => {

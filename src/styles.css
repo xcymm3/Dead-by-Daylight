@@ -163,6 +163,15 @@ h1 { font-size: clamp(27px, 3.5vw, 38px); line-height: 1.14; letter-spacing: -.0
 .turn-status p { color: var(--muted); margin-top: 4px; }
 .action-budget { display: flex; justify-content: space-between; margin-top: 12px; padding: 6px 9px; border-radius: 4px; background: var(--plan); color: var(--text); }
 .extra-actions { margin-top: 10px; grid-template-columns: repeat(auto-fit, minmax(min(110px, 100%), 1fr)); }
+.replay-round > strong { font-size: 16px; }
+.replay-positions { display: grid; gap: 7px; margin: 10px 0 0; color: var(--text); }
+.replay-positions div, .replay-positions dt { display: flex; align-items: center; gap: 7px; }
+.replay-positions div { justify-content: space-between; }
+.replay-positions .piece { width: 24px; height: 24px; font-size: 11px; }
+.replay-positions dd { margin: 0; }
+.replay-result { margin-top: 9px; color: var(--success); font-weight: 650; }
+.replay-actions .secondary:disabled { background: var(--plan); border-color: var(--border); color: var(--muted); cursor: default; }
+.replay-actions .secondary:not(:disabled):active { background: var(--accent-line); }
 
 .metrics { display: grid; gap: 13px; padding: 13px 17px; }
 .metric-heading, .exit-status { display: flex; align-items: center; gap: 5px; color: var(--text); }

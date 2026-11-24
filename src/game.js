@@ -49,6 +49,7 @@ export function createGame(player, seed = Math.floor(Math.random() * 0x100000000
     seed,
     visits: {},
     log: [],
+    replay: [],
   }
 }
 
@@ -149,9 +150,15 @@ export function visibleLog(game) {
   return game.log.filter(event => game.player === HUMAN || event.audience !== HUMAN)
 }
 
+function captureRound(game) {
+  const { round, positions, health, repaired, pallets, winner } = game
+  const frame = { round, positions, health, repaired, count: repaired.length, pallets, winner }
+  return { ...game, replay: [...game.replay, frame] }
+}
+
 function endTurn(game) {
   if (game.turn === KILLER) return { ...game, turn: HUMAN, steps: 0 }
-  return { ...game, turn: KILLER, round: game.round + 1, steps: 2 }
+  return { ...captureRound(game), turn: KILLER, round: game.round + 1, steps: 2 }
 }
 
 function setPosition(game, role, to) {
@@ -168,7 +175,7 @@ function hit(game) {
     `屠夫命中，人类剩余 ${health} 点生命。`,
   )
   return health === 0
-    ? record({ ...next, winner: KILLER, steps: 0 }, '屠夫获胜。')
+    ? captureRound(record({ ...next, winner: KILLER, steps: 0 }, '屠夫获胜。'))
     : endTurn(next)
 }
 
@@ -200,7 +207,7 @@ export function play(game, request) {
   const { kind, to } = action
   if (kind === 'spawn') {
     const placed = record(setPosition(game, role, to), `${ROLES[role]}在 ${coordinate(to)} 出生。`, role)
-    return role === HUMAN ? { ...placed, round: 1 } : placed
+    return role === HUMAN ? { ...captureRound(placed), round: 1 } : placed
   }
   if (role === HUMAN) return playHuman(game, action)
   return playKiller(game, action)
@@ -227,7 +234,9 @@ function playHuman(game, { kind, to, land }) {
   if (kind === 'wait') return endTurn(record(game, '人类原地等待。', HUMAN))
 
   const moved = setPosition(game, HUMAN, land)
-  if (EXITS.includes(land)) return record({ ...moved, winner: HUMAN }, '人类成功从出口撤离。')
+  if (EXITS.includes(land)) {
+    return captureRound(record({ ...moved, winner: HUMAN }, '人类成功从出口撤离。'))
+  }
   const verb = kind === 'move' ? '移动到' : terrain(to) === 'window' ? '翻窗抵达' : '翻板抵达'
   return endTurn(record(moved, `人类${verb} ${coordinate(land)}。`, HUMAN))
 }

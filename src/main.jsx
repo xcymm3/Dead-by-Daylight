@@ -5,6 +5,7 @@ import {
   play, project, skipKillerTurn, terrain, visibleLog,
 } from './game.js'
 import { chooseOpponentAction } from './opponent.js'
+import { loadLastReplay, saveLastReplay } from './replay.js'
 import './tokens.css'
 import './styles.css'
 
@@ -143,7 +144,7 @@ function Setup({ selected, onSelect, onStart }) {
   )
 }
 
-function Controls({ game, view, actions, onAction, onReset }) {
+function Controls({ game, view, actions, onAction, onReset, onReplay }) {
   const role = activeRole(game)
   const personal = role === game.player
   const placing = isPlacement(game)
@@ -194,7 +195,41 @@ function Controls({ game, view, actions, onAction, onReset }) {
             ))}
           </div>
         )}
-        {view.winner && <button type="button" className="primary wide" onClick={onReset}>返回配置 <span aria-hidden="true">→</span></button>}
+        {view.winner && (
+          <div className="extra-actions">
+            <button type="button" className="primary" onClick={onReplay}>查看本局回放</button>
+            <button type="button" className="secondary" onClick={onReset}>返回配置</button>
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function ReplayPanel({ frame, lastRound, onStep }) {
+  return (
+    <section className="panel control-panel" aria-labelledby="replay-title">
+      <div className="panel-title">
+        <h2 id="replay-title">回合记录</h2>
+        <span className="quiet">共 {lastRound} 回合</span>
+      </div>
+      <div className="panel-body">
+        <div className="replay-round" role="status">
+          <strong>{frame.round === 0 ? '出生位置' : `第 ${frame.round} 回合结束`}</strong>
+          <dl className="replay-positions">
+            {[HUMAN, KILLER].map(role => (
+              <div key={role}>
+                <dt><span className={`piece ${role}`} aria-hidden="true">{ROLES[role][0]}</span>{ROLES[role]}</dt>
+                <dd className="mono">{coordinate(frame.positions[role])}</dd>
+              </div>
+            ))}
+          </dl>
+          {frame.winner && <p className="replay-result">{ROLES[frame.winner]}获胜</p>}
+        </div>
+        <div className="extra-actions replay-actions">
+          <button type="button" className="secondary" disabled={frame.round === 0} onClick={() => onStep(-1)}>上一回合</button>
+          <button type="button" className="secondary" disabled={frame.round === lastRound} onClick={() => onStep(1)}>下一回合</button>
+        </div>
       </div>
     </section>
   )
@@ -244,10 +279,22 @@ function Rules({ dialog }) {
 function App() {
   const [selected, setSelected] = useState(HUMAN)
   const [game, setGame] = useState(null)
+  const [lastReplay, setLastReplay] = useState(loadLastReplay)
+  const [replayIndex, setReplayIndex] = useState(null)
   const dialog = useRef(null)
+  const completedReplay = game?.winner ? game.replay : null
+  const availableReplay = completedReplay ?? lastReplay
+  const replayFrame = replayIndex === null ? null : availableReplay?.[replayIndex]
   const role = game && activeRole(game)
-  const view = game && project(game, game.player)
-  const actions = game && role === game.player ? actionsFor(game) : []
+  const view = replayFrame ?? (game && project(game, game.player))
+  const actions = !replayFrame && game && role === game.player ? actionsFor(game) : []
+
+  useEffect(() => {
+    if (completedReplay) {
+      saveLastReplay(completedReplay)
+      setLastReplay(completedReplay)
+    }
+  }, [completedReplay])
 
   useEffect(() => {
     if (!game || game.winner) return
@@ -265,6 +312,10 @@ function App() {
   }
 
   const reset = () => setGame(null)
+  const openReplay = () => setReplayIndex(0)
+  function stepReplay(offset) {
+    setReplayIndex(index => Math.max(0, Math.min(availableReplay.length - 1, index + offset)))
+  }
   const stage = game ? game.winner ? '已结束' : isPlacement(game) ? '选择出生点' : '进行中' : '待开始'
   return (
     <>
@@ -277,22 +328,30 @@ function App() {
       <main className="workspace">
         <div className="workspace-heading">
           <div>
-            <h1>撤离演练</h1>
-            <p>选择人类或屠夫，与电脑对手进行回合制对局。</p>
+            <h1>{replayFrame ? '对局回放' : '撤离演练'}</h1>
+            <p>{replayFrame ? '从出生位置开始，查看双方在每回合结束时的位置。' : '选择人类或屠夫，与电脑对手进行回合制对局。'}</p>
           </div>
           <div className="workspace-tools">
-            <span className="stage" data-running={Boolean(game && !game.winner)}><i aria-hidden="true" />{stage}</span>
-            {game?.round > 0 && <span className="round mono">第 {String(game.round).padStart(2, '0')} 轮</span>}
-            {game && <button type="button" className="secondary" onClick={reset}>重新配置</button>}
+            {replayFrame ? (
+              <button type="button" className="secondary" onClick={() => setReplayIndex(null)}>退出回放</button>
+            ) : (
+              <>
+                <span className="stage" data-running={Boolean(game && !game.winner)}><i aria-hidden="true" />{stage}</span>
+                {game?.round > 0 && <span className="round mono">第 {String(game.round).padStart(2, '0')} 轮</span>}
+                {game && <button type="button" className="secondary" onClick={reset}>重新配置</button>}
+                {!game && availableReplay && <button type="button" className="secondary" onClick={openReplay}>上一局回放</button>}
+              </>
+            )}
           </div>
         </div>
         <div className="workspace-layout">
           <Board view={view} actions={actions} onAction={handleAction} />
-          <aside className="sidebar" aria-label="演练控制">
-            {game ? <Controls game={game} view={view} actions={actions} onAction={handleAction} onReset={reset} />
-              : <Setup selected={selected} onSelect={setSelected} onStart={() => setGame(createGame(selected))} />}
+          <aside className="sidebar" aria-label={replayFrame ? '回放控制' : '演练控制'}>
+            {replayFrame ? <ReplayPanel frame={replayFrame} lastRound={availableReplay.length - 1} onStep={stepReplay} />
+              : game ? <Controls game={game} view={view} actions={actions} onAction={handleAction} onReset={reset} onReplay={openReplay} />
+                : <Setup selected={selected} onSelect={setSelected} onStart={() => setGame(createGame(selected))} />}
             <Status view={view} />
-            <Activity game={game} />
+            {!replayFrame && <Activity game={game} />}
           </aside>
         </div>
       </main>
