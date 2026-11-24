@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { KILLER, PALLETS } from './game.js'
 
 function PalletBoards() {
@@ -12,11 +12,11 @@ function PalletBoards() {
   )
 }
 
-function WallSection({ from, to, sill = false, legacy }) {
+function LegacyWallSection({ from, to, sill = false }) {
   const near = 30
   const thickness = 14
-  const rise = sill ? 4 : legacy ? 24 : 12
-  const lift = sill ? 6 : legacy ? 43 : 25
+  const rise = sill ? 4 : 24
+  const lift = sill ? 6 : 43
   const topX = near + rise
   const bottomFar = near + thickness
   const topFar = topX + thickness
@@ -47,7 +47,7 @@ function WallSection({ from, to, sill = false, legacy }) {
   )
 }
 
-function PassagePallet({ condition = 'ready', south = false }) {
+function LegacyPallet({ condition = 'ready', south = false }) {
   return (
     <g className="passage-pallet" data-state={condition} data-south={south}
       transform={south ? 'translate(37 288)' : 'translate(37 32)'}>
@@ -66,116 +66,123 @@ function PassagePallet({ condition = 'ready', south = false }) {
   )
 }
 
-const DOOR_TRAVEL = 40
-const DOOR_DEPTH = 20
-const DOOR_HEIGHT = 23
+const WALL_HEIGHT = 20
+const TILE_SIZE = 64
+const COURTYARD_SIZE = TILE_SIZE * 5
+const points = (...vertices) => vertices.map(vertex => vertex.join(',')).join(' ')
 
-function DoorLeaf({ travel = -DOOR_TRAVEL }) {
-  return (
-    <>
-      <path d={`M0 0V${travel}L${DOOR_DEPTH} ${travel - DOOR_HEIGHT}V${-DOOR_HEIGHT}Z`}
-        fill="var(--art-wood)" stroke="var(--art-wood-dark)" strokeWidth="1.6" />
-      <path d={`M6 -7v${travel}M13 -15v${travel}M1 ${travel * .14 - 1}l18-21M1 ${travel * .86 - 1}l18-21`}
-        stroke="var(--art-wood-light)" fill="none" strokeWidth="1.6" />
-      <path d={`M9 ${travel * .75 - 11}l5-6`} stroke="var(--art-line)" strokeLinecap="round" strokeWidth="2.6" />
-    </>
-  )
+// Equal X and opposite Y offsets project straight up under the courtyard camera.
+function raise([x, y], height) {
+  return [x + height, y - height]
 }
 
-function PassageDoor({ condition = 'ready', south = false }) {
-  const aperture = useId()
-  const travel = south ? DOOR_TRAVEL : -DOOR_TRAVEL
-  const state = condition === 'dropped' ? 'closed' : condition === 'broken' ? 'broken' : 'open'
+function CourtyardPallet({ condition = 'ready', south = false }) {
+  const direction = south ? 1 : -1
+  const base = [30, south ? TILE_SIZE * 4 : TILE_SIZE]
+  const baseHeight = 5
+  const span = condition === 'dropped'
+    ? raise([6, direction * (TILE_SIZE + 1)], WALL_HEIGHT - baseHeight)
+    : raise([1, -direction * 6], 37 - baseHeight)
+  const pivot = raise(base, baseHeight)
   return (
-    <g className="passage-door" data-state={state} style={{ '--door-retract': `${-travel}px` }}
-      transform={south ? 'translate(30 257)' : 'translate(30 63)'}>
-      <defs>
-        <clipPath id={aperture}>
-          <path d={`M-1 0V${travel}L${DOOR_DEPTH + 1} ${travel - DOOR_HEIGHT}V${-DOOR_HEIGHT}Z`} />
-        </clipPath>
-      </defs>
-      <path d={`M-3 0h12v${travel}H-3Z`} fill="var(--art-shadow)" />
-      <path d={`M0 0V${travel}M7 0V${travel}`} fill="none" stroke="var(--art-steel-light)" strokeWidth="1.4" />
-      {state === 'broken' ? (
-        <g transform={south ? 'translate(6 26)' : 'translate(6 -26)'}>
-          <path d="m-14 1 9-13 4 4-6 13Zm11 9 10-7 3 6-12 5Z" fill="var(--art-wood)" />
-          <path d="m1-6 8-7-4 10Zm10 18 8-4-3 8Z" fill="var(--art-wood-light)" />
+    <g className="courtyard-pallet" data-state={condition} data-edge={south ? 'south' : 'north'}>
+      {condition === 'broken' ? (
+        <g transform={`translate(${base[0]} ${base[1] + direction * 29})`}>
+          <path d="m-15 0 10-14 4 5-6 14Zm13 11 12-8 4 5-13 8Z" fill="var(--art-wood)" />
+          <path d="m4-4 11-9-6 13Zm11 19 5-2-2 5Z" fill="var(--art-wood-light)" />
         </g>
       ) : (
-        <g clipPath={`url(#${aperture})`}>
-          <g className="passage-door-leaf">
-            <DoorLeaf travel={travel} />
+        <g transform={`translate(${pivot.join(' ')})`}>
+          <g className="courtyard-pallet-planks"
+            style={{ transform: `matrix(1, 0, ${span[0] / TILE_SIZE}, ${span[1] / TILE_SIZE}, 0, 0)` }}>
+            <path d="M-11-1H11V65H-11Z" fill="var(--art-wood-dark)" />
+            <path d="M-10 0h5v64h-5Zm7 0h6v64h-6Zm8 0h5v64H5Z" fill="var(--art-wood)" />
+            <path d="M-12 8H12v6h-24ZM-12 49H12v6h-24Z" fill="var(--art-wood-light)" />
+            <path d="M-8 11h1m14 0h1M-8 52h1m14 0h1" stroke="var(--art-line)" strokeWidth="1.5" strokeLinecap="round" />
           </g>
         </g>
       )}
-      <path d={`M0 0l${DOOR_DEPTH} ${-DOOR_HEIGHT}M0 ${travel}l${DOOR_DEPTH} ${-DOOR_HEIGHT}`}
-        fill="none" stroke="var(--art-steel-dark)" strokeWidth="3" />
-      <path d={`M${DOOR_DEPTH} ${-DOOR_HEIGHT}v${travel}`} fill="none" stroke="var(--art-steel-light)" strokeWidth="2" />
     </g>
   )
 }
 
 export function WallRunArt({ pallets, legacy }) {
   const [north, south] = PALLETS
-  const Passage = legacy ? PassagePallet : PassageDoor
+  if (legacy) {
+    return (
+      <svg className="wall-run-art" viewBox="0 0 80 320" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+        <path d="M27 69 44 64 51 254 25 260Z" fill="var(--art-shadow)" />
+        <LegacyWallSection from={143} to={181} sill />
+        <LegacyWallSection from={67} to={143} />
+        <LegacyWallSection from={181} to={255} />
+        <LegacyPallet condition={pallets?.[north]} />
+        <LegacyPallet condition={pallets?.[south]} south />
+      </svg>
+    )
+  }
+
   return (
-    <svg className="wall-run-art" viewBox="0 0 80 320" preserveAspectRatio="none" aria-hidden="true" focusable="false">
-      <path d="M27 69 44 64 51 254 25 260Z" fill="var(--art-shadow)" />
-      <WallSection from={143} to={181} sill legacy={legacy} />
-      <WallSection from={67} to={143} legacy={legacy} />
-      <WallSection from={181} to={255} legacy={legacy} />
-      <Passage condition={pallets?.[north]} />
-      <Passage condition={pallets?.[south]} south />
+    <svg className="wall-run-art" viewBox={`0 0 ${TILE_SIZE} ${COURTYARD_SIZE}`} preserveAspectRatio="none" aria-hidden="true" focusable="false">
+      <StoneWall bounds={[27, 64, 38, 142]} />
+      <StoneWall bounds={[27, 142, 38, 178]} height={6} />
+      <StoneWall bounds={[27, 178, 38, 256]} />
+      <CourtyardPallet condition={pallets?.[north]} />
+      <CourtyardPallet condition={pallets?.[south]} south />
     </svg>
   )
 }
 
-function PerimeterSection({ from, to, depth, low = false }) {
-  const rise = low ? [8, -22] : [12, -27]
-  const offset = (point, shift) => [point[0] + shift[0], point[1] + shift[1]]
-  const edgeFrom = offset(from, depth)
-  const edgeTo = offset(to, depth)
-  const topFrom = offset(from, rise)
-  const topTo = offset(to, rise)
-  const outerFrom = offset(edgeFrom, rise)
-  const outerTo = offset(edgeTo, rise)
-  const points = (...corners) => corners.map(corner => corner.join(',')).join(' ')
-  const seam = [rise[0] / 2, rise[1] / 2]
-  const jointCount = Math.floor(Math.hypot(to[0] - from[0], to[1] - from[1]) / 28)
+function WallFace({ from, to, height, fill }) {
+  const joints = Math.floor(Math.hypot(to[0] - from[0], to[1] - from[1]) / 25)
   return (
     <>
-      <polygon points={points(edgeFrom, edgeTo, outerTo, outerFrom)} fill="var(--art-stone-dark)" />
-      <polygon points={points(from, to, topTo, topFrom)} fill="var(--art-stone)" />
-      <polygon points={points(from, edgeFrom, outerFrom, topFrom)} fill="var(--art-stone-dark)" />
-      <polygon points={points(to, edgeTo, outerTo, topTo)} fill="var(--art-stone-dark)" />
-      <polygon points={points(topFrom, topTo, outerTo, outerFrom)} fill="var(--art-stone-light)" />
-      <polyline points={points(offset(from, seam), offset(to, seam))} fill="none" stroke="var(--art-mortar)" strokeWidth="1.2" />
-      {Array.from({ length: jointCount }, (_, index) => {
-        const fraction = (index + 1) / (jointCount + 1)
+      <polygon points={points(from, to, raise(to, height), raise(from, height))} fill={fill} />
+      {joints > 0 && height > 6 && (
+        <polyline points={points(raise(from, height / 2), raise(to, height / 2))}
+          fill="none" stroke="var(--art-mortar)" strokeWidth=".9" />
+      )}
+      {Array.from({ length: joints }, (_, index) => {
+        const fraction = (index + 1) / (joints + 1)
         const joint = [from[0] + (to[0] - from[0]) * fraction, from[1] + (to[1] - from[1]) * fraction]
-        return <polyline key={index} points={points(joint, offset(joint, rise), offset(offset(joint, rise), depth))}
-          fill="none" stroke="var(--art-mortar)" strokeWidth="1" />
+        return <polyline key={index} points={points(joint, raise(joint, height))}
+          fill="none" stroke="var(--art-mortar)" strokeWidth=".9" />
       })}
     </>
+  )
+}
+
+function StoneWall({ bounds, height = WALL_HEIGHT }) {
+  const [left, top, right, bottom] = bounds
+  const nw = [left, top]
+  const ne = [right, top]
+  const se = [right, bottom]
+  const sw = [left, bottom]
+  return (
+    <g className="courtyard-wall">
+      <WallFace from={nw} to={sw} height={height} fill="var(--art-stone-dark)" />
+      <WallFace from={sw} to={se} height={height} fill="var(--art-stone)" />
+      <polygon points={points(...[nw, ne, se, sw].map(vertex => raise(vertex, height)))}
+        fill="var(--art-stone-light)" stroke="var(--art-mortar)" strokeWidth=".85" />
+    </g>
   )
 }
 
 export function PerimeterArt({ foreground = false }) {
   return (
     <svg className={`perimeter-art ${foreground ? 'perimeter-front' : ''}`}
-      viewBox="0 0 320 320" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+      viewBox={`0 0 ${COURTYARD_SIZE} ${COURTYARD_SIZE}`} preserveAspectRatio="none" aria-hidden="true" focusable="false">
       {foreground ? (
         <>
-          <PerimeterSection from={[320, 185]} to={[320, 320]} depth={[10, 0]} low />
-          <PerimeterSection from={[0, 185]} to={[0, 320]} depth={[-10, 0]} low />
-          <PerimeterSection from={[0, 320]} to={[320, 320]} depth={[0, 10]} low />
+          <StoneWall bounds={[-9, 0, 0, 135]} />
+          <StoneWall bounds={[-9, 185, 0, 320]} />
+          <StoneWall bounds={[-9, 320, 329, 329]} />
         </>
       ) : (
         <>
           <path d="M0 143h-11v34H0m320-34h11v34h-11" fill="var(--art-stone-light)" />
-          <PerimeterSection from={[0, 0]} to={[320, 0]} depth={[0, -10]} />
-          <PerimeterSection from={[320, 0]} to={[320, 135]} depth={[10, 0]} />
-          <PerimeterSection from={[0, 0]} to={[0, 135]} depth={[-10, 0]} />
+          <StoneWall bounds={[-9, -9, 329, 0]} />
+          <StoneWall bounds={[320, 0, 329, 135]} />
+          <StoneWall bounds={[320, 185, 329, 320]} />
         </>
       )}
     </svg>
@@ -223,9 +230,6 @@ export function TerrainArt({ type, condition, open }) {
           )}
         </g>
       )
-      break
-    case 'door':
-      object = <g transform="translate(30 55) scale(.8)"><DoorLeaf /></g>
       break
     case 'machine':
       object = (

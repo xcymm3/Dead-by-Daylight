@@ -11,9 +11,9 @@ import './tokens.css'
 import './styles.css'
 import './game-theme.css'
 
-const TILE_NAMES = { empty: '空格', machine: '灯', window: '窗户', wall: '墙', pallet: '门', exit: '地窖' }
-const LEGACY_NAMES = { machine: '机器', pallet: '木板', exit: '出口' }
-const ART_TYPES = { machine: 'lamp', pallet: 'door', exit: 'hatch' }
+const TILE_NAMES = { empty: '空格', machine: '灯', window: '窗户', wall: '墙', pallet: '木板', exit: '地窖' }
+const LEGACY_NAMES = { machine: '机器', exit: '出口' }
+const ART_TYPES = { machine: 'lamp', exit: 'hatch' }
 const LEGEND = ['machine', 'wall', 'window', 'pallet', 'exit']
 const LEGACY_CELLS = Array.from({ length: 35 }, (_, i) => i)
 const COURTYARD_CELLS = Array.from({ length: 35 }, (_, slot) => {
@@ -26,7 +26,7 @@ const ROLES_INFO = {
   [HUMAN]: '点亮 3 盏灯，再从任一地窖撤离。',
   [KILLER]: '根据亮灯数量巡查，将人类生命降至 0。',
 }
-const RECOVERY = { hit: '命中后恢复', vault: '翻窗中', break: '砸门中', stun: '关门撞晕' }
+const RECOVERY = { hit: '命中后恢复', vault: '翻窗中', break: '砸板中', stun: '木板砸晕' }
 
 function TileIcon({ type }) {
   return <i aria-hidden="true" className={`tile-icon icon-${type}`} />
@@ -37,8 +37,8 @@ function actionLabel(action) {
   switch (action.kind) {
     case 'spawn': return `在 ${at} 出生`
     case 'vault':
-      return `从 ${at}${terrain(action.to) === 'window' ? '翻窗' : '翻门'}至 ${coordinate(action.land)}`
-    case 'break': return `砸碎 ${at} 的门`
+      return `从 ${at}${terrain(action.to) === 'window' ? '翻窗' : '翻板'}至 ${coordinate(action.land)}`
+    case 'break': return `砸碎 ${at} 的木板`
     case 'sidestep': return `向侧面移动至 ${at}`
     default: return terrain(action.to) === 'exit' ? `进入${at}` : `移动至 ${at}`
   }
@@ -76,8 +76,8 @@ function Board({ view, actions, onAction, gameStyle, replayRound, legacy }) {
               const piece = Object.keys(ROLES).filter(role => view?.positions[role] === at)
               const name = type === 'exit' ? coordinate(at, legacy) : `${coordinate(at)} ${tileName(type)}`
               const status = legacy ? { repaired: '已修好', dropped: '已放下', broken: '已砸碎' }[condition]
-                : { repaired: '已点亮', dropped: '已关上', broken: '已砸碎' }[condition] ??
-                  (type === 'pallet' ? '已打开' : type === 'machine' ? '未点亮' : null)
+                : { repaired: '已点亮', dropped: '已放下', broken: '已砸碎' }[condition] ??
+                  (type === 'pallet' ? '靠墙，可通行' : type === 'machine' ? '未点亮' : null)
               const label = [name, status, type === 'exit' && (open ? '已开放' : '未开放'),
                 ...piece.map(role => ROLES[role]), action && actionLabel(action)].filter(Boolean).join('，')
               return (
@@ -184,7 +184,7 @@ function Controls({ game, view, actions, onAction, onReset, onReplay }) {
     headline = `屠夫跳过本回合`
     instruction = `${RECOVERY[recovery.kind]}，还需跳过 ${recovery.remaining} 个屠夫回合。`
   } else if (sidestep) {
-    instruction = '眩晕结束，先选择移到门的左侧或右侧。'
+    instruction = '眩晕结束，先选择移到木板左侧或右侧。'
   } else if (role === KILLER && personal) {
     instruction = '点击高亮格子移动，也可以提前结束行动。'
   }
@@ -213,7 +213,7 @@ function Controls({ game, view, actions, onAction, onReset, onReplay }) {
               <button key={`${action.kind}-${action.to}`} type="button"
                 className={action.kind === 'repair' ? 'primary' : 'secondary'}
                 onClick={() => onAction(action)}>
-                {action.kind === 'repair' ? '原地点灯' : action.kind === 'drop' ? `关上 ${coordinate(action.to)} 的门`
+                {action.kind === 'repair' ? '原地点灯' : action.kind === 'drop' ? `放下 ${coordinate(action.to)} 的木板`
                   : role === KILLER ? '结束行动' : '原地等待'}
               </button>
             ))}
@@ -296,8 +296,8 @@ function Rules({ dialog }) {
           <p className="rules-goal">点亮任意 <strong>3 盏灯</strong>，再进入任一<strong>地窖</strong>即可获胜。你有 <strong>2 点生命</strong>，可以看到屠夫的位置，但不能主动走进他所在的格子。</p>
           <ul className="rules-actions">
             <li><strong>点灯</strong>　先走到灯所在格，下次行动点「原地点灯」。</li>
-            <li><strong>推拉门</strong>　开局两扇门都开着，双方可以直接走过门格。站在门旁的上下左右相邻格，可以在行动面板关门。如果屠夫正站在门格，他会被撞晕。</li>
-            <li><strong>翻窗和翻门</strong>　点击相邻的窗户或关上的门，即可沿原方向跨到对面的空格。移动、点灯、翻越和关门各用 1 次行动。</li>
+            <li><strong>放板</strong>　开局木板靠在墙上，双方可以直接走过木板格。站在木板上下左右任一相邻格，可以在行动面板放板。木板会搭到另一侧墙上挡住通道，若屠夫正站在木板格，他会被砸晕。</li>
+            <li><strong>翻窗和翻板</strong>　点击相邻的窗户或已放下的木板，即可沿原方向跨到对面的空格。移动、点灯、翻越和放板各用 1 次行动。</li>
             <li><strong>从地窖撤离</strong>　点亮 3 盏灯后，两座地窖门会开启。站在 <strong>A3</strong> 点击左侧地窖，或站在 <strong>E3</strong> 点击右侧地窖，即可撤离。</li>
           </ul>
         </section>
@@ -307,8 +307,8 @@ function Rules({ dialog }) {
           <ul className="rules-actions">
             <li><strong>命中</strong>　移动到人类所在格会自动扣除他 1 点生命。你的本轮行动立即结束，并跳过接下来的 <strong>2 个屠夫回合</strong>。</li>
             <li><strong>翻窗</strong>　点击相邻的窗户后先留在原地。跳过下一个屠夫回合，才落到窗对面的空格。</li>
-            <li><strong>砸门</strong>　尝试经过关上的门时，你会停在门前。跳过下一个屠夫回合，把门砸碎后便可通行。</li>
-            <li><strong>被门撞晕</strong>　站在门格时被人类关门，你会跳过 2 个屠夫回合。恢复后的第一步必须走到门的左侧或右侧。</li>
+            <li><strong>砸板</strong>　尝试经过已放下的木板时，你会停在板前。跳过下一个屠夫回合，把木板砸碎后便可通行。</li>
+            <li><strong>被板砸晕</strong>　站在木板格时被人类放板砸中，你会跳过 2 个屠夫回合。恢复后的第一步必须走到木板左侧或右侧。</li>
           </ul>
         </section>
       </div>

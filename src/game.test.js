@@ -67,7 +67,7 @@ test('the human vaults immediately and the killer lands after the skipped turn',
   assert.deepEqual(game.recovery, { kind: 'hit', remaining: 2 })
 })
 
-test('closing a door on the killer forces the first move after recovery to either side', () => {
+test('dropping a pallet on the killer forces the first move after recovery to either side', () => {
   const drop = game => play(game, { kind: 'drop', to: 7 })
   const overlapping = position(7, 7, HUMAN)
   assert.equal(drop(overlapping), overlapping)
@@ -86,7 +86,7 @@ test('closing a door on the killer forces the first move after recovery to eithe
   assert.equal(game.recovery, null)
 })
 
-test('a remotely closed door stays hidden until the killer attempts to cross', () => {
+test('a remotely dropped pallet stays hidden until the killer attempts to cross', () => {
   const before = position(6, 8, HUMAN, { repaired: [5] })
   let game = play(before, { kind: 'drop', to: 7 })
   const alternate = { ...wait(before), positions: { [KILLER]: 6, [HUMAN]: 15 }, repaired: [9] }
@@ -114,15 +114,15 @@ test('lighting a lamp consumes one human turn and both hatches open at three lit
   assert.equal(move({ ...nearExit, repaired: game.repaired }, 2).winner, HUMAN)
 })
 
-test('an open door is walkable and a closed door remains vaultable after lighting the lamps', () => {
-  for (const door of [7, 27]) {
+test('an upright pallet is walkable and a dropped pallet remains vaultable after lighting the lamps', () => {
+  for (const pallet of [7, 27]) {
     for (const side of [-1, 1]) {
-      const open = position(29, door + side, HUMAN, { repaired: [5, 9, 25] })
-      assert.equal(move(open, door).positions[HUMAN], door)
-      const closed = { ...open, pallets: { [door]: 'dropped' } }
-      assert.equal(move(closed, door), closed)
-      const vault = play(closed, { kind: 'vault', to: door })
-      assert.equal(vault.positions[HUMAN], door - side)
+      const upright = position(29, pallet + side, HUMAN, { repaired: [5, 9, 25] })
+      assert.equal(move(upright, pallet).positions[HUMAN], pallet)
+      const lowered = { ...upright, pallets: { [pallet]: 'dropped' } }
+      assert.equal(move(lowered, pallet), lowered)
+      const vault = play(lowered, { kind: 'vault', to: pallet })
+      assert.equal(vault.positions[HUMAN], pallet - side)
       assert.equal(vault.winner, null)
     }
   }

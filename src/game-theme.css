@@ -168,8 +168,7 @@
 .legacy-plan .wall-run-art { inset-block-start: calc(100% / 7); inset-inline-start: 40%; inline-size: 20%; block-size: calc(100% * 5 / 7); }
 .perimeter-art { inset: 0 auto auto calc(100% / 7); inline-size: calc(500% / 7); block-size: 100%; }
 .perimeter-front { z-index: 4; }
-.passage-door-leaf { translate: 0 var(--door-retract); }
-.passage-door[data-state="closed"] .passage-door-leaf { translate: 0 0; }
+.courtyard-pallet-planks { transform-origin: 0 0; }
 .passage-pallet-pose {
   transform-origin: 0 0;
   transform: translate(7px, 24px) skewX(-26deg) scale(.8, .72);
@@ -210,8 +209,7 @@
 .character-impact { stroke: var(--killer); }
 
 @media (prefers-reduced-motion: no-preference) {
-  .passage-pallet-pose { transition: transform 260ms var(--ease-out); }
-  .passage-door-leaf { transition: translate 260ms var(--ease-out); }
+  .passage-pallet-pose, .courtyard-pallet-planks { transition: transform 260ms var(--ease-out); }
   .switch-track::before { transition: translate 170ms var(--ease-out); }
   .game-theme .piece-position { transition-duration: 255ms; transition-timing-function: ease-out; }
   .motion-idle { animation: pawn-idle 1.75s ease-in-out 2; }

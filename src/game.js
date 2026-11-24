@@ -196,7 +196,7 @@ export function skipKillerTurn(game) {
         ...next,
         pallets: { ...next.pallets, [recovery.to]: 'broken' },
         knownPallets: { ...next.knownPallets, [recovery.to]: 'broken' },
-      }, `屠夫砸碎了 ${coordinate(recovery.to)} 的门。`, KILLER)
+      }, `屠夫砸碎了 ${coordinate(recovery.to)} 的木板。`, KILLER)
     }
   }
   return endTurn(next)
@@ -223,13 +223,13 @@ function playHuman(game, { kind, to, land }) {
   }
   if (kind === 'drop') {
     let next = record({ ...game, pallets: { ...game.pallets, [to]: 'dropped' } },
-      `人类关上了 ${coordinate(to)} 的门。`, HUMAN)
+      `人类放下了 ${coordinate(to)} 的木板。`, HUMAN)
     if (game.positions[KILLER] === to) {
       next = record({
         ...next,
         knownPallets: { ...next.knownPallets, [to]: 'dropped' },
         recovery: { kind: 'stun', remaining: 2 },
-      }, '屠夫被关上的门撞晕，跳过 2 个回合。', KILLER)
+      }, '屠夫被木板砸晕，跳过 2 个回合。', KILLER)
     }
     return endTurn(next)
   }
@@ -239,7 +239,7 @@ function playHuman(game, { kind, to, land }) {
   if (EXITS.includes(land)) {
     return captureRound(record({ ...moved, winner: HUMAN }, '人类成功进入地窖撤离。'))
   }
-  const verb = kind === 'move' ? '移动到' : terrain(to) === 'window' ? '翻窗抵达' : '翻门抵达'
+  const verb = kind === 'move' ? '移动到' : terrain(to) === 'window' ? '翻窗抵达' : '翻板抵达'
   return endTurn(record(moved, `人类${verb} ${coordinate(land)}。`, HUMAN))
 }
 
@@ -250,7 +250,7 @@ function playKiller(game, { kind, to, land }) {
       ...game,
       knownPallets: { ...game.knownPallets, [to]: 'dropped' },
       recovery: { kind: 'break', remaining: 1, to },
-    }, `屠夫在门前停步，下回合砸碎 ${coordinate(to)} 的门。`, KILLER))
+    }, `屠夫在板前停步，下回合砸碎 ${coordinate(to)} 的木板。`, KILLER))
   }
   if (kind === 'vault') {
     return endTurn(record({

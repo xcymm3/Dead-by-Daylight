@@ -93,8 +93,6 @@ h1 { font-size: clamp(27px, 3.5vw, 38px); line-height: 1.14; letter-spacing: -.0
 .icon-window::after { height: 12px; border-left: 1px solid currentColor; }
 .icon-pallet::before { width: 15px; height: 10px; border: 1.5px solid currentColor; border-radius: 1px; }
 .icon-pallet::after { width: 5px; height: 10px; border-inline: 1px solid currentColor; }
-.icon-door::before { width: 10px; height: 14px; border: 1.5px solid currentColor; border-radius: 1px; }
-.icon-door::after { width: 2px; height: 2px; border-radius: 50%; background: currentColor; right: 6px; }
 .icon-exit::before { width: 10px; height: 13px; border: 1.5px solid currentColor; border-right: 0; border-radius: 2px 0 0 2px; left: 1px; }
 .icon-exit::after { content: '→'; top: -2px; right: 0; font-size: 16px; font-weight: 700; }
 .icon-hatch::before { width: 13px; height: 9px; border: 1.5px solid currentColor; border-radius: 2px; transform: skewX(-19deg); }
