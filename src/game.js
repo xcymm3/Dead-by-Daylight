@@ -6,7 +6,7 @@ export const MACHINES = [5, 9, 25, 29]
 export const PALLETS = [7, 27]
 export const EXITS = [2, 32]
 export const WINDOW = 17
-export const WALLS = [11, 23]
+export const WALLS = [12, 22]
 
 export function terrain(at) {
   if (EXITS.includes(at)) return 'exit'
@@ -90,11 +90,16 @@ export function movement(view, role, from, to) {
     && from === at + (at === EXITS[0] ? WIDTH : -WIDTH)
   if (tile === 'exit' && !exitAllowed(to)) return null
 
-  if (tile === 'pallet' && view.pallets[to] === 'dropped' && role === KILLER) {
+  const droppedPallet = tile === 'pallet' && view.pallets[to] === 'dropped'
+  if (droppedPallet && role === KILLER) {
     return { kind: 'break', to, land: from }
   }
+  if (droppedPallet && view.count >= 3 && Math.abs(from - to) === 1) {
+    const exit = EXITS.find(at => Math.abs(at - to) === WIDTH)
+    if (exit !== undefined) return { kind: 'vault', to, land: exit }
+  }
 
-  const vault = tile === 'window' || (tile === 'pallet' && view.pallets[to] === 'dropped')
+  const vault = tile === 'window' || droppedPallet
   const land = vault ? to + (to - from) : to
   if (vault) {
     const landing = terrain(land)

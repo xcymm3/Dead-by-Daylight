@@ -25,7 +25,9 @@ function actionLabel(action) {
   const at = action.to === undefined ? '' : coordinate(action.to)
   switch (action.kind) {
     case 'spawn': return `在 ${at} 出生`
-    case 'vault': return `从 ${at}${terrain(action.to) === 'window' ? '翻窗' : '翻板'}至 ${coordinate(action.land)}`
+    case 'vault':
+      if (terrain(action.land) === 'exit') return `从 ${at} 斜翻进入${coordinate(action.land)}`
+      return `从 ${at}${terrain(action.to) === 'window' ? '翻窗' : '翻板'}至 ${coordinate(action.land)}`
     case 'break': return `砸碎 ${at} 的木板`
     case 'sidestep': return `向侧面移动至 ${at}`
     default: return `移动至 ${at}`
@@ -230,10 +232,10 @@ function Rules({ dialog }) {
         <h3>命中与视野</h3>
         <p>屠夫碰到人类会扣除 1 点生命，立即结束行动，并跳过接下来的两个屠夫回合。人类不能主动进入屠夫所在格，生命归零时屠夫获胜。屠夫只能看到人类的生命与修机总数。</p>
         <h3>窗户与木板</h3>
-        <p>翻越沿进入方向跨到对面。人类立即到达，屠夫翻窗时先停在原位，跳过下一回合后落地。</p>
+        <p>常规翻越沿进入方向跨到对面。人类立即到达，屠夫翻窗时先停在原位，跳过下一回合后落地。</p>
         <p>从木板上下左右的相邻格可以放板。砸中板上的屠夫时，屠夫跳过两个回合，恢复后先往左侧或右侧移动。人类可以直接翻越放下的板，屠夫会在板前停下，跳过下一回合砸碎它。</p>
         <h3>修机与撤离</h3>
-        <p>站在机器格使用「原地修机」即修好一台机器。修好任意 3 台后，只能经对应木板格进入出口。木板放下时，可以从内侧直接翻入出口。</p>
+        <p>站在机器格使用「原地修机」即修好一台机器。修好任意 3 台后，站在木板格可以走进对应出口。木板已放下时，从左侧或右侧点击木板，即可斜翻进对应出口。</p>
       </div>
     </dialog>
   )

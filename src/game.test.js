@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  HUMAN, KILLER, activeRole, actionsFor, createGame, play, project, skipKillerTurn, visibleLog,
+  HUMAN, KILLER, activeRole, actionsFor, createGame, play, project, skipKillerTurn, terrain, visibleLog,
 } from './game.js'
 import { chooseOpponentAction } from './opponent.js'
 
@@ -46,9 +46,11 @@ test('the killer stops after a hit and skips exactly two turns', () => {
 
 test('movement is orthogonal and the human cannot enter the killer square', () => {
   const game = position(16, 21, HUMAN)
-  for (const target of [16, 17, 23]) assert.equal(move(game, target), game)
+  for (const target of [16, 17, 22]) assert.equal(move(game, target), game)
   const nextToWall = position(13, 6, HUMAN)
-  assert.equal(move(nextToWall, 11), nextToWall)
+  assert.equal(move(nextToWall, 11).positions[HUMAN], 11)
+  assert.equal(terrain(12), 'wall')
+  assert.equal(terrain(22), 'wall')
   const blockedVault = position(18, 16, HUMAN)
   assert.equal(play(blockedVault, { kind: 'vault', to: 17 }), blockedVault)
 })
@@ -110,10 +112,26 @@ test('repair consumes one human turn and exit access starts at three repairs', (
   assert.equal(project(game, KILLER).count, 3)
   assert.equal(project(game, KILLER).repaired, undefined)
   assert.equal(move({ ...nearExit, repaired: game.repaired }, 2).winner, HUMAN)
-  const approach = position(29, 12, HUMAN, { repaired: game.repaired, pallets: { 7: 'dropped' } })
-  assert.equal(play(approach, { kind: 'vault', to: 7 }).winner, HUMAN)
-  const southApproach = position(5, 22, HUMAN, { repaired: game.repaired, pallets: { 27: 'dropped' } })
-  assert.equal(play(southApproach, { kind: 'vault', to: 27 }).winner, HUMAN)
+})
+
+test('a side vault into either open exit wins immediately', () => {
+  for (const [pallet, exit] of [[7, 2], [27, 32]]) {
+    for (const side of [-1, 1]) {
+      const request = { kind: 'vault', to: pallet }
+      const locked = position(29, pallet + side, HUMAN, { repaired: [5, 9], pallets: { [pallet]: 'dropped' } })
+      assert.equal(move(locked, exit), locked)
+      const horizontal = play(locked, request)
+      assert.equal(horizontal.positions[HUMAN], pallet - side)
+      assert.equal(horizontal.winner, null)
+
+      const open = { ...locked, repaired: [5, 9, 25] }
+      assert.equal(move(open, exit), open)
+      assert.deepEqual(chooseOpponentAction(open), { ...request, land: exit })
+      const escaped = play(open, request)
+      assert.equal(escaped.positions[HUMAN], exit)
+      assert.equal(escaped.winner, HUMAN)
+    }
+  }
 })
 
 test('both computer roles can play complete games through the normal actions', () => {
