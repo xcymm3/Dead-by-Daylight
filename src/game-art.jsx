@@ -77,24 +77,23 @@ function raise([x, y], height) {
 }
 
 function CourtyardPallet({ condition = 'ready', south = false }) {
-  const direction = south ? 1 : -1
-  const base = [30, south ? TILE_SIZE * 4 : TILE_SIZE]
+  const base = [30, south ? TILE_SIZE * 4 : 0]
   const baseHeight = 5
   const span = condition === 'dropped'
-    ? raise([6, direction * (TILE_SIZE + 1)], WALL_HEIGHT - baseHeight)
-    : raise([1, -direction * 6], 37 - baseHeight)
+    ? raise([6, TILE_SIZE + 1], WALL_HEIGHT - baseHeight)
+    : raise([1, -6], 37 - baseHeight)
   const pivot = raise(base, baseHeight)
   return (
     <g className="courtyard-pallet" data-state={condition} data-edge={south ? 'south' : 'north'}>
       {condition === 'broken' ? (
-        <g transform={`translate(${base[0]} ${base[1] + direction * 29})`}>
+        <g transform={`translate(${base[0]} ${base[1] + 29})`}>
           <path d="m-15 0 10-14 4 5-6 14Zm13 11 12-8 4 5-13 8Z" fill="var(--art-wood)" />
           <path d="m4-4 11-9-6 13Zm11 19 5-2-2 5Z" fill="var(--art-wood-light)" />
         </g>
       ) : (
         <g transform={`translate(${pivot.join(' ')})`}>
           <g className="courtyard-pallet-planks"
-            style={{ transform: `matrix(1, 0, ${span[0] / TILE_SIZE}, ${span[1] / TILE_SIZE}, 0, 0)` }}>
+            style={{ '--pallet-edge-x': span[0] / TILE_SIZE, '--pallet-edge-y': span[1] / TILE_SIZE }}>
             <path d="M-11-1H11V65H-11Z" fill="var(--art-wood-dark)" />
             <path d="M-10 0h5v64h-5Zm7 0h6v64h-6Zm8 0h5v64H5Z" fill="var(--art-wood)" />
             <path d="M-12 8H12v6h-24ZM-12 49H12v6h-24Z" fill="var(--art-wood-light)" />
@@ -183,6 +182,36 @@ export function PerimeterArt({ foreground = false }) {
           <StoneWall bounds={[-9, -9, 329, 0]} />
           <StoneWall bounds={[320, 0, 329, 135]} />
           <StoneWall bounds={[320, 185, 329, 320]} />
+        </>
+      )}
+    </svg>
+  )
+}
+
+export function GateArt({ open, east }) {
+  const near = [0, -22]
+  const far = [0, 22]
+  const height = 30
+  const swing = east ? 16 : -16
+  const leafEnd = [swing, -17]
+  return (
+    <svg className="wall-gate-art" viewBox="-32 -32 64 64" aria-hidden="true" focusable="false">
+      <polygon points={points([-8, -23], [8, -23], [8, 23], [-8, 23])} fill="var(--art-stone-light)" />
+      <polygon points={points(near, far, raise(far, height), raise(near, height))}
+        fill={open ? 'var(--art-hatch-well)' : 'var(--art-wood)'} />
+      <polyline points={points(near, raise(near, height), raise(far, height), far)}
+        fill="none" stroke="var(--art-stone-light)" strokeWidth="4" strokeLinejoin="round" />
+      {open ? (
+        <>
+          <polygon points={points(near, leafEnd, raise(leafEnd, 26), raise(near, 26))}
+            fill="var(--art-wood)" stroke="var(--art-wood-dark)" strokeWidth="1.4" />
+          <polyline points={points([1, -17], [1, 15])} stroke="var(--art-green)" strokeWidth="2" />
+        </>
+      ) : (
+        <>
+          <path d="M8-27v42m8-50V6m7-48V0" stroke="var(--art-wood-dark)" strokeWidth="1.25" />
+          <path d="m0 9 27-27M0-11l27-27" stroke="var(--art-wood-light)" strokeWidth="2" />
+          <circle cx="15" cy="1" r="2" fill="var(--art-glint)" />
         </>
       )}
     </svg>

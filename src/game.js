@@ -7,6 +7,7 @@ export const PALLETS = [7, 27]
 export const EXITS = [2, 32]
 export const EXIT_APPROACHES = [15, 19]
 export const COURTYARD_LAYOUT = 'courtyard'
+export const GATE_LAYOUT = 'courtyard-gates'
 export const DIFFICULTIES = { normal: '普通', hard: '困难' }
 export const WINDOW = 17
 export const WALLS = [12, 22]
@@ -24,9 +25,12 @@ export function terrain(at) {
 export const SPAWNS = Array.from({ length: 25 }, (_, i) => i + 5)
   .filter(at => terrain(at) === 'empty')
 
-export function coordinate(at, legacy = false) {
-  if (at === EXITS[0]) return legacy ? '北出口' : '西地窖'
-  if (at === EXITS[1]) return legacy ? '南出口' : '东地窖'
+export function coordinate(at, layout = GATE_LAYOUT) {
+  const exit = EXITS.indexOf(at)
+  if (exit !== -1) {
+    if (layout === GATE_LAYOUT) return ['西门', '东门'][exit]
+    return (layout === COURTYARD_LAYOUT ? ['西地窖', '东地窖'] : ['北出口', '南出口'])[exit]
+  }
   return `${'ABCDE'[at % WIDTH]}${Math.floor(at / WIDTH)}`
 }
 
@@ -57,6 +61,7 @@ export function createGame(player, seed = Math.floor(Math.random() * 0x100000000
     knownPallets: {},
     recovery: null,
     winner: null,
+    escapedThrough: null,
     seed,
     visits: {},
     log: [],
@@ -86,13 +91,14 @@ export function project(game, viewer) {
 }
 
 export function activeRole(game) {
+  if (game.winner) return game.turn
   if (game.positions[KILLER] === null) return KILLER
   if (game.positions[HUMAN] === null) return HUMAN
   return game.turn
 }
 
 export function isPlacement(game) {
-  return game.positions[HUMAN] === null
+  return !game.winner && game.positions[HUMAN] === null
 }
 
 export function movement(view, role, from, to) {
@@ -155,8 +161,8 @@ export function visibleLog(game) {
 }
 
 function captureRound(game) {
-  const { round, positions, health, repaired, pallets, winner } = game
-  const frame = { layout: COURTYARD_LAYOUT, round, positions, health, repaired, count: repaired.length, pallets, winner }
+  const { round, positions, health, repaired, pallets, winner, escapedThrough } = game
+  const frame = { layout: GATE_LAYOUT, round, positions, health, repaired, count: repaired.length, pallets, winner, escapedThrough }
   return { ...game, replay: [...game.replay, frame] }
 }
 
@@ -221,7 +227,7 @@ function playHuman(game, { kind, to, land }) {
   if (kind === 'repair') {
     const repaired = [...game.repaired, to]
     const next = record({ ...game, repaired }, `人类点亮了 ${coordinate(to)} 的灯。`, HUMAN)
-    return endTurn(repaired.length === 3 ? record(next, '已点亮 3 盏灯，地窖门开启。') : next)
+    return endTurn(repaired.length === 3 ? record(next, '已点亮 3 盏灯，两扇出口门开启。') : next)
   }
   if (kind === 'drop') {
     let next = record({ ...game, pallets: { ...game.pallets, [to]: 'dropped' } },
@@ -237,10 +243,11 @@ function playHuman(game, { kind, to, land }) {
   }
   if (kind === 'wait') return endTurn(record(game, '人类原地等待。', HUMAN))
 
-  const moved = setPosition(game, HUMAN, land)
   if (EXITS.includes(land)) {
-    return captureRound(record({ ...moved, winner: HUMAN }, '人类成功进入地窖撤离。'))
+    const escaped = setPosition(game, HUMAN, null)
+    return captureRound(record({ ...escaped, winner: HUMAN, escapedThrough: land }, `人类从${coordinate(land)}撤离。`))
   }
+  const moved = setPosition(game, HUMAN, land)
   const verb = kind === 'move' ? '移动到' : terrain(to) === 'window' ? '翻窗抵达' : '翻板抵达'
   return endTurn(record(moved, `人类${verb} ${coordinate(land)}。`, HUMAN))
 }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { HUMAN, KILLER, COURTYARD_LAYOUT } from './game.js'
+import { HUMAN, KILLER, COURTYARD_LAYOUT, GATE_LAYOUT } from './game.js'
 import { loadLastReplay, saveLastReplay } from './replay.js'
 
 test('only the latest complete replay is retained in browser storage', () => {
@@ -25,4 +25,12 @@ test('missing or damaged replay storage does not prevent loading the app', () =>
   const malformed = { getItem: () => JSON.stringify([null, { winner: HUMAN }]) }
   assert.equal(loadLastReplay(unreadable), null)
   assert.equal(loadLastReplay(malformed), null)
+})
+
+test('a gate replay keeps the final frame when the escaped human has no position', () => {
+  const start = { layout: GATE_LAYOUT, round: 0, positions: { killer: 6, human: 15 },
+    health: 2, repaired: [], count: 0, pallets: {}, winner: null }
+  const end = { ...start, round: 1, positions: { killer: 6, human: null }, repaired: [5, 9, 25],
+    count: 3, winner: HUMAN, escapedThrough: 2 }
+  assert.deepEqual(loadLastReplay({ getItem: () => JSON.stringify([start, end]) }), [start, end])
 })

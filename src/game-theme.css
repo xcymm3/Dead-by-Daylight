@@ -104,6 +104,7 @@
   max-width: 470px;
   transform: scaleY(var(--camera-foreshortening)) rotate(-45deg);
 }
+.game-theme .gate-plan { width: 65%; max-width: 410px; }
 .game-theme .legacy-plan {
   /* Older replays display the original tilted floor. */
   --plan-upright: matrix(.9, .503, -.926, .953, 0, 0);
@@ -122,11 +123,25 @@
   color: var(--ink);
 }
 .game-theme .courtyard-plan .rows { color: var(--ink); }
+.game-theme .gate-plan .rows { position: relative; z-index: 4; translate: -18px 3px; }
 .game-theme .legacy-plan .board { aspect-ratio: 5 / 5.45; }
-.game-theme .plan :is(.columns span, .rows span, .tile .terrain-art, .exit-name, .tile-check, .character-art) {
+.game-theme .plan :is(.columns span, .rows span, .tile .terrain-art, .exit-name, .tile-check, .character-art, .gate-label) {
   transform: var(--plan-upright);
 }
 .game-theme .courtyard-plan .character-art { transform-origin: 50% 85%; }
+.game-theme .wall-gate {
+  inset-block-start: 40%;
+  width: 12%;
+  height: 20%;
+  background: var(--clear);
+  border: 1px solid var(--clear);
+}
+.game-theme .wall-gate-west { translate: -50%; }
+.game-theme .wall-gate-east { translate: 50%; }
+.game-theme .wall-gate-art { position: absolute; inset: 0 -33.333%; width: 166.666%; height: 100%; overflow: visible; pointer-events: none; }
+.game-theme .wall-gate[aria-disabled="false"] { border-color: var(--accent-line); }
+.game-theme .wall-gate[aria-disabled="false"]:hover { background: var(--game-lamp); }
+.game-theme .gate-label { position: absolute; bottom: -4px; left: 0; padding-inline: 2px; border-radius: 2px; background: var(--plan); }
 .game-theme .tile {
   place-content: normal;
   place-items: center;
@@ -165,10 +180,17 @@
   overflow: visible;
 }
 .courtyard-plan .wall-run-art { inset: 0 auto auto calc(300% / 7); inline-size: calc(100% / 7); block-size: 100%; }
+.gate-plan .wall-run-art { inset-inline-start: 40%; inline-size: 20%; }
 .legacy-plan .wall-run-art { inset-block-start: calc(100% / 7); inset-inline-start: 40%; inline-size: 20%; block-size: calc(100% * 5 / 7); }
 .perimeter-art { inset: 0 auto auto calc(100% / 7); inline-size: calc(500% / 7); block-size: 100%; }
+.gate-plan .perimeter-art { inset-inline-start: 0; inline-size: 100%; }
 .perimeter-front { z-index: 4; }
-.courtyard-pallet-planks { transform-origin: 0 0; }
+@property --pallet-edge-x { syntax: "<number>"; inherits: false; initial-value: 0; }
+@property --pallet-edge-y { syntax: "<number>"; inherits: false; initial-value: 1; }
+.courtyard-pallet-planks {
+  transform-origin: 0 0;
+  transform: matrix(1, 0, var(--pallet-edge-x), var(--pallet-edge-y), 0, 0);
+}
 .passage-pallet-pose {
   transform-origin: 0 0;
   transform: translate(7px, 24px) skewX(-26deg) scale(.8, .72);
@@ -209,7 +231,8 @@
 .character-impact { stroke: var(--killer); }
 
 @media (prefers-reduced-motion: no-preference) {
-  .passage-pallet-pose, .courtyard-pallet-planks { transition: transform 260ms var(--ease-out); }
+  .passage-pallet-pose { transition: transform 260ms var(--ease-out); }
+  .courtyard-pallet-planks { transition: --pallet-edge-x 290ms var(--ease-out), --pallet-edge-y 290ms var(--ease-out); }
   .switch-track::before { transition: translate 170ms var(--ease-out); }
   .game-theme .piece-position { transition-duration: 255ms; transition-timing-function: ease-out; }
   .motion-idle { animation: pawn-idle 1.75s ease-in-out 2; }
@@ -266,6 +289,7 @@
   .game-theme .map-surface { padding-block: 38px 34px; }
   .game-theme .courtyard-plan .columns { translate: 0 -10px; }
   .game-theme .courtyard-plan { width: 78%; }
+  .game-theme .gate-plan { width: 65%; }
   .game-theme .legacy-plan { width: 72%; }
 }
 @media (max-width: 360px) {

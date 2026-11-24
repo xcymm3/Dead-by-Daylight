@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  HUMAN, KILLER, COURTYARD_LAYOUT, activeRole, actionsFor, createGame, play, project, skipKillerTurn, terrain, visibleLog,
+  HUMAN, KILLER, GATE_LAYOUT, activeRole, actionsFor, createGame, play, project, skipKillerTurn, terrain, visibleLog,
 } from './game.js'
 import { chooseOpponentAction } from './opponent.js'
 
@@ -102,7 +102,7 @@ test('a remotely dropped pallet stays hidden until the killer attempts to cross'
   assert.equal(project(game, KILLER).pallets[7], 'broken')
 })
 
-test('lighting a lamp consumes one human turn and both hatches open at three lit lamps', () => {
+test('lighting a lamp consumes one human turn and opens both gates at three lit lamps', () => {
   const nearExit = position(29, 15, HUMAN, { repaired: [5, 9] })
   assert.equal(move(nearExit, 2), nearExit)
   let game = position(29, 25, HUMAN, { repaired: [5, 9] })
@@ -128,7 +128,7 @@ test('an upright pallet is walkable and a dropped pallet remains vaultable after
   }
 })
 
-test('only the human on the matching edge square can enter an open cellar', () => {
+test('only the human on the matching edge square can leave through an open gate', () => {
   const repaired = [5, 9, 25]
   for (const [approach, exit] of [[15, 2], [19, 32]]) {
     const near = position(29, approach, HUMAN, { repaired })
@@ -140,8 +140,12 @@ test('only the human on the matching edge square can enter an open cellar', () =
     assert.deepEqual(chooseOpponentAction(near), { kind: 'move', to: exit, land: exit })
     const escaped = move(near, exit)
     assert.equal(escaped.winner, HUMAN)
-    assert.equal(escaped.replay.at(-1).layout, COURTYARD_LAYOUT)
-    assert.equal(escaped.replay.at(-1).positions[HUMAN], exit)
+    assert.equal(escaped.positions[HUMAN], null)
+    assert.equal(escaped.escapedThrough, exit)
+    assert.equal(escaped.replay.at(-1).layout, GATE_LAYOUT)
+    assert.equal(escaped.replay.at(-1).positions[HUMAN], null)
+    assert.equal(escaped.replay.at(-1).escapedThrough, exit)
+    assert.deepEqual(actionsFor(escaped), [])
   }
 })
 test('replay records spawns, completed rounds and the final hit', () => {

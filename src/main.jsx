@@ -1,12 +1,12 @@
 import React, { StrictMode, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
-  HUMAN, KILLER, ROLES, WIDTH, EXITS, COURTYARD_LAYOUT, DIFFICULTIES, activeRole, actionsFor, coordinate, createGame, isPlacement,
-  project, terrain, visibleLog,
+  HUMAN, KILLER, ROLES, WIDTH, EXITS, COURTYARD_LAYOUT, GATE_LAYOUT, DIFFICULTIES,
+  activeRole, actionsFor, coordinate, createGame, isPlacement, project, terrain, visibleLog,
 } from './game.js'
 import { applyMatchAction, chooseMatchOpponentAction } from './hard-opponent.js'
 import { loadLastReplay, saveLastReplay } from './replay.js'
-import { CharacterArt, PerimeterArt, TerrainArt, WallRunArt } from './game-art.jsx'
+import { CharacterArt, GateArt, PerimeterArt, TerrainArt, WallRunArt } from './game-art.jsx'
 import './tokens.css'
 import './styles.css'
 import './game-theme.css'
@@ -16,6 +16,7 @@ const LEGACY_NAMES = { machine: '机器', exit: '出口' }
 const ART_TYPES = { machine: 'lamp', exit: 'hatch' }
 const LEGEND = ['machine', 'wall', 'window', 'pallet', 'exit']
 const LEGACY_CELLS = Array.from({ length: 35 }, (_, i) => i)
+const GATE_CELLS = Array.from({ length: 25 }, (_, i) => i + WIDTH)
 const COURTYARD_CELLS = Array.from({ length: 35 }, (_, slot) => {
   const row = Math.floor(slot / 7)
   const column = slot % 7
@@ -23,7 +24,7 @@ const COURTYARD_CELLS = Array.from({ length: 35 }, (_, slot) => {
   return (row + 1) * WIDTH + column - 1
 })
 const ROLES_INFO = {
-  [HUMAN]: '点亮 3 盏灯，再从任一地窖撤离。',
+  [HUMAN]: '点亮 3 盏灯，再从任一出口门撤离。',
   [KILLER]: '根据亮灯数量巡查，将人类生命降至 0。',
 }
 const RECOVERY = { hit: '命中后恢复', vault: '翻窗中', break: '砸板中', stun: '木板砸晕' }
@@ -44,10 +45,12 @@ function actionLabel(action) {
   }
 }
 
-function Board({ view, actions, onAction, gameStyle, replayRound, legacy }) {
-  const cells = legacy ? LEGACY_CELLS : COURTYARD_CELLS
-  const columnCount = legacy ? 5 : 7
-  const tileName = type => (legacy && LEGACY_NAMES[type]) || TILE_NAMES[type]
+function Board({ view, actions, onAction, gameStyle, replayRound, layout }) {
+  const gated = layout === GATE_LAYOUT
+  const legacy = !gated && layout !== COURTYARD_LAYOUT
+  const cells = gated ? GATE_CELLS : legacy ? LEGACY_CELLS : COURTYARD_CELLS
+  const columnCount = gated || legacy ? 5 : 7
+  const tileName = type => (gated && type === 'exit' ? '出口门' : (legacy && LEGACY_NAMES[type]) || TILE_NAMES[type])
   const artType = type => (legacy ? type : ART_TYPES[type]) ?? type
   const byTarget = new Map(actions
     .filter(action => ['spawn', 'move', 'vault', 'break', 'sidestep'].includes(action.kind))
@@ -59,9 +62,9 @@ function Board({ view, actions, onAction, gameStyle, replayRound, legacy }) {
         <span className="mono map-size">5 × 5</span>
       </div>
       <div className="map-surface">
-        <div className={`plan ${legacy ? 'legacy-plan' : 'courtyard-plan'}`}>
+        <div className={`plan ${legacy ? 'legacy-plan' : 'courtyard-plan'} ${gated ? 'gate-plan' : ''}`}>
           <div className="columns mono" aria-hidden="true">
-            {[...'ABCDE'].map((letter, i) => <span key={letter} style={{ gridColumn: i + (legacy ? 1 : 2) }}>{letter}</span>)}
+            {[...'ABCDE'].map((letter, i) => <span key={letter} style={{ gridColumn: i + (columnCount === 5 ? 1 : 2) }}>{letter}</span>)}
           </div>
           <div className="rows mono" aria-hidden="true">
             {[1, 2, 3, 4, 5].map(row => <span key={row} style={{ gridRow: row + (legacy ? 1 : 0) }}>{row}</span>)}
@@ -74,7 +77,7 @@ function Board({ view, actions, onAction, gameStyle, replayRound, legacy }) {
               const condition = view?.pallets[at] ?? (view?.repaired?.includes(at) ? 'repaired' : '')
               const open = type === 'exit' && view?.count >= 3
               const piece = Object.keys(ROLES).filter(role => view?.positions[role] === at)
-              const name = type === 'exit' ? coordinate(at, legacy) : `${coordinate(at)} ${tileName(type)}`
+              const name = type === 'exit' ? coordinate(at, layout) : `${coordinate(at)} ${tileName(type)}`
               const status = legacy ? { repaired: '已修好', dropped: '已放下', broken: '已砸碎' }[condition]
                 : { repaired: '已点亮', dropped: '已放下', broken: '已砸碎' }[condition] ??
                   (type === 'pallet' ? '靠墙，可通行' : type === 'machine' ? '未点亮' : null)
@@ -110,21 +113,38 @@ function Board({ view, actions, onAction, gameStyle, replayRound, legacy }) {
               )
             })}
             {gameStyle && !legacy && <PerimeterArt foreground />}
+            {gated && EXITS.map((exit, index) => {
+              const action = byTarget.get(exit)
+              const open = (view?.count ?? 0) >= 3
+              const name = coordinate(exit)
+              const label = `${name}，${open ? '已开启' : '未开启'}${action ? '，可撤离' : ''}`
+              return (
+                <button key={exit} type="button" className={`wall-gate ${index ? 'wall-gate-east' : 'wall-gate-west'} ${open ? 'open' : ''}`}
+                  aria-label={label} title={label} aria-disabled={!action} tabIndex={action ? 0 : -1}
+                  onClick={() => action && onAction(action)}>
+                  {gameStyle ? <GateArt open={open} east={Boolean(index)} /> : <TileIcon type="exit" />}
+                  <span className="gate-label">{name}</span>
+                </button>
+              )
+            })}
           </div>
         </div>
       </div>
       <ul className="legend" aria-label="地图图例">
         {LEGEND.map(type => (
-          <li key={type}>{gameStyle ? <TerrainArt type={artType(type)} /> : <TileIcon type={artType(type)} />}{tileName(type)}</li>
+          <li key={type}>{gated && type === 'exit' ? <TileIcon type="exit" />
+            : gameStyle ? <TerrainArt type={artType(type)} /> : <TileIcon type={artType(type)} />}{tileName(type)}</li>
         ))}
       </ul>
     </section>
   )
 }
 
-function Status({ view, legacy }) {
+function Status({ view, layout }) {
   const count = view?.count ?? 0
   const health = view?.health ?? 2
+  const legacy = layout !== GATE_LAYOUT && layout !== COURTYARD_LAYOUT
+  const cellar = layout === COURTYARD_LAYOUT
   return (
     <section className="panel status-panel" aria-labelledby="status-title">
       <div className="panel-title"><h2 id="status-title">对局状态</h2></div>
@@ -141,7 +161,7 @@ function Status({ view, legacy }) {
             {[1, 2].map(value => <span key={value} className={health >= value ? 'filled' : ''} />)}
           </div>
         </div>
-        <div className="exit-status"><TileIcon type={legacy ? 'exit' : 'hatch'} /><span>{legacy ? '撤离出口' : '撤离地窖'}</span><strong>{count >= 3 ? '已开启' : legacy ? '修好 3 台后开放' : '点亮 3 盏后开启'}</strong></div>
+        <div className="exit-status"><TileIcon type={cellar ? 'hatch' : 'exit'} /><span>{cellar ? '撤离地窖' : '撤离出口'}</span><strong>{count >= 3 ? '已开启' : legacy ? '修好 3 台后开放' : '点亮 3 盏后开启'}</strong></div>
       </div>
     </section>
   )
@@ -201,7 +221,7 @@ function Controls({ game, view, actions, onAction, onReset, onReplay }) {
   }
   if (view.winner) {
     headline = view.winner === game.player ? '演练成功' : '演练结束'
-    instruction = view.winner === HUMAN ? '人类点亮了灯，并成功从地窖撤离。' : '人类生命归零，屠夫获胜。'
+    instruction = view.winner === HUMAN ? `人类成功从${coordinate(game.escapedThrough)}撤离。` : '人类生命归零，屠夫获胜。'
   }
   const extras = actions.filter(action => ['repair', 'drop', 'wait'].includes(action.kind))
   return (
@@ -241,7 +261,7 @@ function Controls({ game, view, actions, onAction, onReset, onReplay }) {
   )
 }
 
-function ReplayPanel({ frame, lastRound, onStep, legacy }) {
+function ReplayPanel({ frame, lastRound, onStep, layout }) {
   return (
     <section className="panel control-panel" aria-labelledby="replay-title">
       <div className="panel-title">
@@ -255,7 +275,8 @@ function ReplayPanel({ frame, lastRound, onStep, legacy }) {
             {[HUMAN, KILLER].map(role => (
               <div key={role}>
                 <dt><span className={`piece ${role}`} aria-hidden="true">{ROLES[role][0]}</span>{ROLES[role]}</dt>
-                <dd className="mono">{coordinate(frame.positions[role], legacy)}</dd>
+                <dd className="mono">{role === HUMAN && frame.escapedThrough
+                  ? `已从${coordinate(frame.escapedThrough)}撤离` : coordinate(frame.positions[role], layout)}</dd>
               </div>
             ))}
           </dl>
@@ -304,12 +325,12 @@ function Rules({ dialog }) {
         </section>
         <section className="rules-role rules-human" aria-labelledby="rules-human-title">
           <h2 id="rules-human-title"><span className="piece human" aria-hidden="true">人</span>扮演人类</h2>
-          <p className="rules-goal">点亮任意 <strong>3 盏灯</strong>，再进入任一<strong>地窖</strong>即可获胜。你有 <strong>2 点生命</strong>，可以看到屠夫的位置，但不能主动走进他所在的格子。</p>
+          <p className="rules-goal">点亮任意 <strong>3 盏灯</strong>，再从任一<strong>出口门</strong>撤离即可获胜。你有 <strong>2 点生命</strong>，可以看到屠夫的位置，但不能主动走进他所在的格子。</p>
           <ul className="rules-actions">
             <li><strong>点灯</strong>　先走到灯所在格，下次行动点「原地点灯」。</li>
             <li><strong>放板</strong>　开局木板靠在墙上，双方可以直接走过木板格。站在木板上下左右任一相邻格，可以在行动面板放板。木板会搭到另一侧墙上挡住通道，若屠夫正站在木板格，他会被砸晕。</li>
             <li><strong>翻窗和翻板</strong>　点击相邻的窗户或已放下的木板，即可沿原方向跨到对面的空格。移动、点灯、翻越和放板各用 1 次行动。</li>
-            <li><strong>从地窖撤离</strong>　点亮 3 盏灯后，两座地窖门会开启。站在 <strong>A3</strong> 点击左侧地窖，或站在 <strong>E3</strong> 点击右侧地窖，即可撤离。</li>
+            <li><strong>从出口门撤离</strong>　点亮 3 盏灯后，两扇墙上的出口门都会开启。在 <strong>A3</strong> 点西门，或在 <strong>E3</strong> 点东门，人类就会离开地图，本局立即结束。</li>
           </ul>
         </section>
         <section className="rules-role rules-killer" aria-labelledby="rules-killer-title">
@@ -338,7 +359,7 @@ function App() {
   const completedReplay = game?.winner ? game.replay : null
   const availableReplay = completedReplay ?? lastReplay
   const replayFrame = replayIndex === null ? null : availableReplay?.[replayIndex]
-  const legacyReplay = Boolean(replayFrame && replayFrame.layout !== COURTYARD_LAYOUT)
+  const mapLayout = replayFrame ? replayFrame.layout ?? 'original' : GATE_LAYOUT
   const role = game && activeRole(game)
   const view = replayFrame ?? (game && project(game, game.player))
   const actions = !replayFrame && game && role === game.player ? actionsFor(game) : []
@@ -394,7 +415,7 @@ function App() {
         <div className="workspace-heading">
           <div>
             <h1>{replayFrame ? '对局回放' : '撤离演练'}</h1>
-            <p>{legacyReplay ? '旧地图回放，显示原对局的地形和出口位置。'
+            <p>{mapLayout !== GATE_LAYOUT ? '旧地图回放，显示原对局的地形和出口位置。'
               : replayFrame ? '从出生位置开始，查看双方在每回合结束时的位置。' : '选择人类或屠夫，与电脑对手进行回合制对局。'}</p>
           </div>
           <div className="workspace-tools">
@@ -412,13 +433,13 @@ function App() {
         </div>
         <div className="workspace-layout">
           <Board key={Boolean(replayFrame)} view={view} actions={actions} onAction={handleAction}
-            gameStyle={gameStyle} replayRound={replayFrame?.round ?? null} legacy={legacyReplay} />
+            gameStyle={gameStyle} replayRound={replayFrame?.round ?? null} layout={mapLayout} />
           <aside className="sidebar" aria-label={replayFrame ? '回放控制' : '演练控制'}>
-            {replayFrame ? <ReplayPanel frame={replayFrame} lastRound={availableReplay.length - 1} onStep={stepReplay} legacy={legacyReplay} />
+            {replayFrame ? <ReplayPanel frame={replayFrame} lastRound={availableReplay.length - 1} onStep={stepReplay} layout={mapLayout} />
               : game ? <Controls game={game} view={view} actions={actions} onAction={handleAction} onReset={reset} onReplay={openReplay} />
                 : <Setup selected={selected} onSelect={setSelected} difficulty={difficulty} onDifficulty={setDifficulty}
                   onStart={() => setGame(createGame(selected, undefined, difficulty))} />}
-            <Status view={view} legacy={legacyReplay} />
+            <Status view={view} layout={mapLayout} />
             {!replayFrame && <Activity game={game} />}
           </aside>
         </div>
