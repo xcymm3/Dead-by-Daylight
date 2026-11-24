@@ -29,14 +29,18 @@ npm.cmd run online:server
 
 刷新原标签页或短暂断网时，页面会尝试自动重连。对手断线时对局暂停，服务端检测到断线后会保留座位 10 分钟。主动退出会关闭未结束的房间。结算后双方均可逐回合查看完整回放，浏览器会用本局覆盖上一局回放。
 
-### 公网部署
+### 在 Render 部署
 
-React 前端可以继续作为静态站点发布，例如部署到 EdgeOne Pages。房间服务需要运行在可保持 WebSocket 连接的 Node.js 进程中。它默认监听 `127.0.0.1:8787`，支持通过 `ONLINE_HOST` 和 `ONLINE_PORT` 配置监听地址。
+仓库根目录的 `render.yaml` 会在新加坡创建一个免费 Node.js Web Service。它同时提供 React 页面和 `/online` WebSocket。同域部署无需填写 `VITE_ONLINE_URL`，默认允许 Render 分配的域名连接。
 
-- **同域部署**　通过支持 WebSocket 升级的 HTTPS 反向代理，把前端同域的 `/online` 转发到房间服务。
-- **分开部署**　为房间服务配置对外的 TLS 入口，在前端构建环境中设置 `VITE_ONLINE_URL=wss://rooms.example.com/online` 后重新发布。在房间服务设置 `ONLINE_ORIGINS=https://你的前端域名`，限制允许连接的浏览器来源。
+1. 打开 [Render 控制台](https://dashboard.render.com/)，选择 **New → Blueprint**。
+2. 连接 `xcymm3/Dead-by-Daylight` 仓库，选择 `main` 分支，使用根目录的 `render.yaml`。
+3. 确认预览显示一个新加坡 **Free Web Service** 后，点击 **Deploy Blueprint**。
+4. 服务显示 **Live** 后，打开它分配的 `https://…onrender.com` 地址。访问同域的 `/healthz` 应显示 `ok`。再用两个浏览器进入首页，创建和加入同一个房间以验证联机。
 
-房间和进行中的对局保存在服务进程内存中。部署重启会清空房间，已保存在浏览器里的回放仍可查看。
+如已有按旧说明创建的 Render 服务，也可以在其设置里将构建命令改为 `npm ci --include=dev && npm run build`，启动命令改为 `node server/index.js`，健康检查路径改为 `/healthz`。清除旧的 `VITE_ONLINE_URL`、`ONLINE_PORT` 和 `ONLINE_ORIGINS`，保存后重新部署。使用自定义游戏域名时，可用 `ONLINE_ORIGINS` 指定实际访问的 HTTPS 来源，多个来源用英文逗号分隔。
+
+免费实例空闲约 15 分钟后会休眠，下一次访问需要等待唤醒。房间和进行中的对局存放在服务进程内存中，休眠和部署重启都会清空它们。回放保存在浏览器中，并按站点域名存储。
 
 ```powershell
 npm.cmd test

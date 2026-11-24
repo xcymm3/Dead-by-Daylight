@@ -22,7 +22,7 @@ function seat(socket) {
 const connected = player => player?.socket?.readyState === WebSocket.OPEN
 const bothOnline = room => connected(room.host) && connected(room.guest)
 
-export function createOnlineServer({ allowedOrigins = [], skipDelay = 550, reconnectWindow = ROOM_GRACE } = {}) {
+export function createOnlineServer({ allowedOrigins = [], skipDelay = 550, reconnectWindow = ROOM_GRACE, servePage } = {}) {
   const rooms = new Map()
   const http = createServer((request, response) => {
     if (request.url === '/healthz') {
@@ -30,7 +30,9 @@ export function createOnlineServer({ allowedOrigins = [], skipDelay = 550, recon
       response.end('ok')
       return
     }
-    response.writeHead(404).end()
+    const notFound = () => response.writeHead(404).end()
+    if (servePage && (request.method === 'GET' || request.method === 'HEAD')) return servePage(request, response, notFound)
+    return notFound()
   })
   const sockets = new WebSocketServer({ noServer: true, maxPayload: 4096 })
 

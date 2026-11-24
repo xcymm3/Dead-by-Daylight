@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: grid-operations-game
+    runtime: node
+    region: singapore
+    plan: free
+    branch: main
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: node server/index.js
+    healthCheckPath: /healthz
