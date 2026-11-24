@@ -191,14 +191,23 @@ h1 { font-size: clamp(27px, 3.5vw, 38px); line-height: 1.14; letter-spacing: -.0
 .event-list .mono { color: var(--muted); }
 .empty-log { padding: 13px 17px; color: var(--muted); font-size: 12px; }
 
-.rules { width: min(530px, calc(100% - 30px)); max-height: calc(100% - 30px); padding: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--ink); box-shadow: 0 16px 40px var(--shadow); }
+.rules { width: min(640px, calc(100% - 30px)); max-height: calc(100% - 30px); padding: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--ink); box-shadow: 0 16px 40px var(--shadow); }
+.rules .panel-title { position: sticky; top: 0; z-index: 1; background: var(--surface); }
 .rules .panel-title h1 { font-size: 17px; letter-spacing: normal; }
 .rules:modal { overscroll-behavior: contain; }
 .rules::backdrop { background: var(--backdrop); overflow: hidden; overscroll-behavior: contain; }
-.rules-body { padding: 16px 17px 20px; }
-.rules h3 { font-size: 14px; }
-.rules p { margin-block: 4px 12px; color: var(--text); }
-.rules p:last-child { margin-bottom: 0; }
+.rules-body { display: grid; gap: 12px; padding: 16px 17px 20px; }
+.rules-start { padding: 0 1px 3px; }
+.rules-body h2 { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.rules-body p { margin-top: 6px; color: var(--text); }
+.rules-role { padding: 11px 13px 13px; border: 1px solid var(--border); border-radius: var(--radius); }
+.rules-human { --rule-ink: var(--human); --rule-paper: var(--accent-soft); }
+.rules-killer { --rule-ink: var(--killer); --rule-paper: var(--killer-soft); }
+.rules-role h2 { color: var(--rule-ink); }
+.rules-role .piece { width: 25px; height: 25px; }
+.rules-role .rules-goal { margin-top: 7px; }
+.rules-role strong { padding: 1px 3px; border-radius: 3px; background: var(--rule-paper); color: var(--rule-ink); }
+.rules-actions { display: grid; gap: 7px; margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--border); color: var(--text); }
 
 @media (prefers-reduced-motion: no-preference) {
   .piece-position { transition: transform 260ms var(--ease-out); }

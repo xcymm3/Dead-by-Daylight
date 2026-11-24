@@ -258,19 +258,35 @@ function Rules({ dialog }) {
   return (
     <dialog ref={dialog} className="rules" aria-labelledby="rules-title">
       <div className="panel-title">
-        <h1 id="rules-title">演练规则</h1>
+        <h1 id="rules-title">新手玩法</h1>
         <form method="dialog"><button type="submit" className="secondary" autoFocus>关闭</button></form>
       </div>
       <div className="rules-body">
-        <h3>出生与回合</h3>
-        <p>屠夫先在空格出生，人类随后选空格。每轮屠夫先行动两次，人类再行动一次。移动只走上下左右，墙不可穿过。</p>
-        <h3>命中与视野</h3>
-        <p>屠夫碰到人类会扣除 1 点生命，立即结束行动，并跳过接下来的两个屠夫回合。人类不能主动进入屠夫所在格，生命归零时屠夫获胜。屠夫只能看到人类的生命与修机总数。</p>
-        <h3>窗户与木板</h3>
-        <p>常规翻越沿进入方向跨到对面。人类立即到达，屠夫翻窗时先停在原位，跳过下一回合后落地。</p>
-        <p>从木板上下左右的相邻格可以放板。砸中板上的屠夫时，屠夫跳过两个回合，恢复后先往左侧或右侧移动。人类可以直接翻越放下的板，屠夫会在板前停下，跳过下一回合砸碎它。</p>
-        <h3>修机与撤离</h3>
-        <p>站在机器格使用「原地修机」即修好一台机器。修好任意 3 台后，站在木板格可以走进对应出口。木板已放下时，从左侧或右侧点击木板，即可斜翻进对应出口。</p>
+        <section className="rules-start" aria-labelledby="rules-start-title">
+          <h2 id="rules-start-title">怎么开始</h2>
+          <p>选择人类或屠夫，电脑扮演另一方。屠夫先选一个空格出生，人类再选另一个空格。</p>
+          <p>每轮<strong>屠夫先行动，最多 2 次</strong>，然后<strong>人类行动 1 次</strong>。轮到你时，点击高亮格子移动或翻越，其他操作在「行动面板」。普通移动只走上下左右，墙挡路。</p>
+        </section>
+        <section className="rules-role rules-human" aria-labelledby="rules-human-title">
+          <h2 id="rules-human-title"><span className="piece human" aria-hidden="true">人</span>扮演人类</h2>
+          <p className="rules-goal">修好任意 <strong>3 台机器</strong>，从地图上方或下方的出口离开即可获胜。你有 <strong>2 点生命</strong>，可以看到屠夫的位置，但不能主动走进他所在的格子。</p>
+          <ul className="rules-actions">
+            <li><strong>修机</strong>　先走上机器格，下次行动点「原地修机」，就能修好这台机器。</li>
+            <li><strong>翻窗和翻板</strong>　点击相邻的窗户或已放下的木板，即可沿原方向跨到对面空格。移动、修机、翻越和放板各用 1 次行动。</li>
+            <li><strong>放板</strong>　站在还没放过的木板上下左右任一相邻格，在行动面板点放板按钮，如「放下 C1 木板」。如果屠夫正站在板上，他会被砸晕。</li>
+            <li><strong>逃生</strong>　出口开放后，站在对应的木板格，点击出口即可离开。如果木板已放下，从它的左侧或右侧点击木板，会<strong>斜翻进出口</strong>并立即获胜。</li>
+          </ul>
+        </section>
+        <section className="rules-role rules-killer" aria-labelledby="rules-killer-title">
+          <h2 id="rules-killer-title"><span className="piece killer" aria-hidden="true">屠</span>扮演屠夫</h2>
+          <p className="rules-goal">找到人类，让他的<strong>生命归零</strong>即可获胜。你能看到人类的剩余生命和已修机器数量，人类的位置、行动和修好的具体机器都隐藏。</p>
+          <ul className="rules-actions">
+            <li><strong>命中</strong>　移动到人类所在格会自动扣除他 1 点生命。你的本轮行动立即结束，并跳过接下来的 <strong>2 个屠夫回合</strong>。</li>
+            <li><strong>翻窗</strong>　点击相邻的窗户后先留在原地。跳过下一个屠夫回合，才落到窗对面的空格。</li>
+            <li><strong>砸板</strong>　尝试经过已放下的木板时，你会停在板前。跳过下一个屠夫回合，把木板砸碎后便可通行。</li>
+            <li><strong>被板砸晕</strong>　如果人类在你站在木板上时放板，你会跳过 2 个屠夫回合。恢复后的第一步必须走到木板左侧或右侧。</li>
+          </ul>
+        </section>
       </div>
     </dialog>
   )
