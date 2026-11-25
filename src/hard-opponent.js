@@ -1,118 +1,78 @@
 import {
-  HUMAN, KILLER, MACHINES, EXITS, PALLETS, activeRole, actionsFor, adjacent,
-  isPlacement, movement, play, project, skipKillerTurn, terrain,
+  HUMAN, KILLER, EXIT_APPROACHES, activeRole, actionsFor, isPlacement,
+  play, project, skipKillerTurn, turnOptions,
 } from './game.js'
-import { chooseOpponentAction } from './opponent.js'
+import { chooseOpponentAction, noise } from './opponent.js'
+import { hardHuman } from './hard-human.js'
+import {
+  PLAYABLE, hiddenKey, killerTravel, palletKey, remainingRoute, threatened, visibleKey,
+} from './hard-planning.js'
 
-const PLAYABLE = Array.from({ length: 25 }, (_, i) => i + 5)
-  .filter(at => ['empty', 'machine', 'pallet'].includes(terrain(at)))
-const PATROL_SAMPLES = [1049, 2081, 3907, 6067, 8237]
-const routeTables = new Map()
-const lampMask = lamps => MACHINES.reduce((mask, at, i) => mask | (lamps.includes(at) ? 1 << i : 0), 0)
-const palletKey = pallets => PALLETS.map(at => pallets[at] ?? '').join(',')
 const simulate = (game, action) => action ? play(game, action) : skipKillerTurn(game)
 const compact = game => ({ ...game, log: [], replay: [], visits: {}, opponentBelief: undefined })
 
-function visibleKey(game) {
-  const view = project(game, KILLER)
-  const { recovery } = view
-  return [view.positions[KILLER], view.health, view.count, view.turn, view.steps, view.winner,
-    palletKey(view.pallets), recovery?.kind, recovery?.remaining, recovery?.to].join('/')
-}
-
-function hiddenKey(game) {
-  return [game.positions[HUMAN], lampMask(game.repaired), palletKey(game.pallets)].join('/')
-}
-
 export function applyMatchAction(game, action) {
   const next = simulate(game, action)
-  if (next === game || next.winner || game.difficulty !== 'hard' || game.player !== HUMAN) return next
+  if (next === game || next.winner || game.difficulty !== 'hard') return next
   const role = activeRole(game)
+  if (game.player === KILLER) {
+    if (!action || role !== KILLER || isPlacement(game)) return next
+    const observed = { from: game.positions[KILLER], steps: game.steps, gates: game.repaired.length >= 3,
+      kind: action.kind, to: action.to }
+    return { ...next, observedPatrol: [...(game.observedPatrol ?? []).slice(-47), observed] }
+  }
   const wanted = visibleKey(next)
   const candidates = new Map()
-  const add = candidate => {
-    if (visibleKey(candidate) === wanted) candidates.set(hiddenKey(candidate), compact(candidate))
+  let total = 0
+  const add = (candidate, weight) => {
+    if (candidate.winner || visibleKey(candidate) !== wanted) return
+    const key = hiddenKey(candidate)
+    const prior = candidates.get(key)
+    if (prior) prior.beliefWeight += weight
+    else candidates.set(key, { ...compact(candidate), beliefWeight: weight })
+    total += weight
   }
   if (isPlacement(game) && role === HUMAN) {
-    for (const spawn of actionsFor(game)) add(play(game, spawn))
+    for (const spawn of actionsFor(game)) {
+      const candidate = play(game, spawn)
+      add(candidate, threatened(candidate).has(spawn.to) ? 1 : 4)
+    }
   } else {
     for (const candidate of game.opponentBelief ?? []) {
-      if (role === KILLER) add(simulate(candidate, action))
-      else for (const reply of actionsFor(candidate)) add(play(candidate, reply))
-    }
-  }
-  return { ...next, opponentBelief: [...candidates.values()] }
-}
-
-function remainingRoute(game) {
-  const key = palletKey(game.pallets)
-  if (!routeTables.has(key)) {
-    const incoming = Array.from({ length: 35 * 16 }, () => [])
-    const distances = new Int8Array(incoming.length).fill(60)
-    const queue = []
-    for (let mask = 0; mask < 16; mask++) {
-      const count = MACHINES.filter((_, index) => mask & (1 << index)).length
-      const view = { count, positions: { [KILLER]: null }, pallets: game.pallets }
-      if (count >= 3) {
-        for (const exit of EXITS) {
-          const id = exit * 16 + mask
-          distances[id] = 0
-          queue.push(id)
+      const weight = candidate.beliefWeight ?? 1
+      if (role === KILLER) add(simulate(candidate, action), weight)
+      else {
+        for (const { next, probability } of humanPredictions(candidate)) {
+          add(next, weight * probability)
         }
       }
-      for (const from of PLAYABLE) {
-        const id = from * 16 + mask
-        for (const to of adjacent(from)) {
-          const action = movement(view, HUMAN, from, to)
-          if (action) incoming[action.land * 16 + mask].push(id)
-        }
-        const lamp = MACHINES.indexOf(from)
-        if (lamp !== -1 && !(mask & (1 << lamp))) incoming[from * 16 + (mask | (1 << lamp))].push(id)
-      }
     }
-    for (const id of queue) for (const from of incoming[id]) {
-      if (distances[from] !== 60) continue
-      distances[from] = distances[id] + 1
-      queue.push(from)
-    }
-    routeTables.set(key, distances)
   }
-  return routeTables.get(key)[game.positions[HUMAN] * 16 + lampMask(game.repaired)]
+  const belief = [...candidates.values()]
+  // A player may change tactics mid-match. Give every still-legal hypothesis a small floor.
+  for (const candidate of belief) {
+    candidate.beliefWeight = .995 * candidate.beliefWeight / total + .005 / belief.length
+  }
+  return { ...next, opponentBelief: belief }
 }
 
-function forecastHit(game, seed) {
-  let state = { ...game, seed }
-  if (state.recovery?.remaining) state = skipKillerTurn(state)
-  else while (!state.winner && state.turn === KILLER) state = play(state, chooseOpponentAction(state))
-  return state.health < game.health ? 1 : 0
-}
-
-function canForceNextEscape(game) {
-  if (game.winner) return game.winner === HUMAN
-  if (game.turn === HUMAN) return actionsFor(game).some(action => EXITS.includes(action.to))
-  if (game.recovery?.remaining) return canForceNextEscape(skipKillerTurn(game))
-  return actionsFor(game).every(action => canForceNextEscape(play(game, action)))
-}
-
-function hardHuman(game) {
-  let best
-  let highest = -Infinity
-  for (const action of actionsFor(game)) {
+function humanPredictions(game) {
+  const before = remainingRoute(game)
+  const replies = actionsFor(game).map(action => {
     const next = play(game, action)
-    if (next.winner === HUMAN) return action
-    if (next.repaired.length >= 3 && remainingRoute(next) === 1 && canForceNextEscape(next)) return action
-    const risk = PATROL_SAMPLES.reduce((sum, seed) => sum + forecastHit(next, seed), 0) / PATROL_SAMPLES.length
-    const repeated = game.replay.slice(-8).filter(frame =>
-      frame.positions[HUMAN] === next.positions[HUMAN] && frame.positions[KILLER] === next.positions[KILLER]
-      && frame.count === next.repaired.length && frame.health === next.health).length
-    const score = -remainingRoute(next) - risk * (game.health === 1 ? 15 : 8) - repeated * .55
-      + (action.kind === 'repair' ? 1 : 0) + (action.kind === 'drop' && next.recovery?.kind === 'stun' ? 2 : 0)
-    if (score > highest) {
-      best = action
-      highest = score
-    }
-  }
-  return best
+    const progress = next.winner ? 2 : before - remainingRoute(next)
+    let score = 1.4 * progress
+    if (next.winner) score += 4
+    else if (threatened(next).has(next.positions[HUMAN])) score -= next.health === 1 ? 3 : 1
+    if (action.kind === 'repair') score += .8
+    if (action.kind === 'drop' && action.to === game.positions[KILLER]) score += 2
+    return { next, weight: Math.exp(score) }
+  })
+  const total = replies.reduce((sum, reply) => sum + reply.weight, 0)
+  // Keep cautious, stationary and deliberately misleading humans in the belief too.
+  return replies.map(({ next, weight }) => ({
+    next, probability: .85 * weight / total + .15 / replies.length,
+  }))
 }
 
 function postActionGroups(states, action) {
@@ -154,34 +114,95 @@ function forcedKillerAction(states, options) {
   return null
 }
 
-function hitCoverage(states, action) {
-  const after = states.map(state => play(state, action))
-  const hits = after.filter((state, i) => state.health < states[i].health).length
-  const next = after.filter(state => !state.winner && state.turn === KILLER)
-  const followUp = next.length ? Math.max(...actionsFor(next[0]).map(move =>
-    next.filter(state => play(state, move).health < state.health).length), 0) : 0
-  return (hits + followUp * .8) / states.length
+function pursuitMaps(belief) {
+  const groups = new Map()
+  for (const candidate of belief) {
+    const key = palletKey(candidate.pallets)
+    if (!groups.has(key)) groups.set(key, {
+      pallets: candidate.pallets, current: new Float64Array(35),
+      future: new Float64Array(35), pressure: new Float64Array(35), mass: 0,
+    })
+    const group = groups.get(key)
+    const weight = candidate.beliefWeight ?? 1 / belief.length
+    const h = candidate.positions[HUMAN]
+    group.mass += weight
+    // With the gates open, a wounded human on an approach can leave this turn.
+    const atOpenGate = candidate.repaired.length >= 3 && EXIT_APPROACHES.includes(h)
+    group.current[h] += weight * (atOpenGate && candidate.health === 1 ? 6 : 1)
+    const humanTurn = { ...candidate, turn: HUMAN, steps: 0 }
+    for (const { next, probability } of humanPredictions(humanTurn)) {
+      const at = next.positions[HUMAN] ?? h
+      group.future[at] += weight * probability
+    }
+  }
+  for (const group of groups.values()) {
+    const distance = killerTravel(group.pallets)
+    for (const k of PLAYABLE) for (const h of PLAYABLE) {
+      group.pressure[k] += group.future[h] / (1 + distance[k][h])
+    }
+  }
+  return [...groups.values()]
+}
+
+function intercept(game, belief, options) {
+  const view = project(game, KILLER)
+  const from = view.positions[KILLER]
+  const maps = pursuitMaps(belief)
+  function scorePath(first, second) {
+    let score = 0
+    for (const map of maps) {
+      let at = from
+      let hits = 0
+      for (const step of [first, second]) {
+        if (!step || step.kind === 'wait') break
+        if (map.pallets[step.to] === 'dropped') {
+          score -= .28 * map.mass
+          break
+        }
+        if (step.kind === 'vault') {
+          score += map.future[step.land] * 3 - .32 * map.mass
+          at = step.land
+          break
+        }
+        at = step.land
+        hits += map.current[at]
+      }
+      score += hits * (view.health === 1 ? 14 : 10) + map.pressure[at] * 7
+      score += map.future[at] * 2
+    }
+    return score
+  }
+  let best
+  let highest = -Infinity
+  for (const action of options) {
+    let score = scorePath(action)
+    if (view.steps === 2 && ['move', 'sidestep'].includes(action.kind)) {
+      const nextView = { ...view, positions: { [KILLER]: action.land }, recovery: null }
+      for (const second of turnOptions(nextView, KILLER)) {
+        score = Math.max(score, scorePath(action, second))
+      }
+    }
+    const visits = view.visits[action.land ?? from] ?? 0
+    score += .65 * noise(game.seed, view.round, view.steps, action.to)
+      - .28 * Math.log1p(visits) - (action.kind === 'wait' ? .55 : 0)
+    if (score > highest) {
+      best = action
+      highest = score
+    }
+  }
+  return best
 }
 
 export function chooseMatchOpponentAction(game) {
   if (game.difficulty !== 'hard') return chooseOpponentAction(game)
   if (activeRole(game) === HUMAN) return hardHuman(game)
-  const patrol = chooseOpponentAction(game)
   const belief = game.opponentBelief
-  if (!belief?.length || !patrol) return patrol
+  if (!belief?.length) return chooseOpponentAction(game)
   const options = actionsFor(game)
-  const proved = forcedKillerAction(belief, options)
-  if (proved) return proved
-
-  const baseline = hitCoverage(belief, patrol)
-  let best = patrol
-  let value = baseline + .22
-  for (const move of options) {
-    const coverage = hitCoverage(belief, move)
-    if (coverage > value) {
-      best = move
-      value = coverage
-    }
+  if (!options.length) return null
+  if (belief.length <= 16) {
+    const proved = forcedKillerAction(belief, options)
+    if (proved) return proved
   }
-  return best
+  return intercept(game, belief, options)
 }

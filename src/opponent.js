@@ -17,7 +17,7 @@ function routes(view, role, start) {
   return distance
 }
 
-function killerThreat(view) {
+export function killerThreat(view) {
   const recovery = view.recovery
   if (recovery?.remaining > 0) {
     return new Set(recovery.kind === 'vault' ? [recovery.to] : [])
@@ -66,7 +66,7 @@ function scoreKiller(view, action) {
   return -priority - (view.visits[next] ?? 0) * 1.6 - (delay[action.kind] ?? 0)
 }
 
-function noise(seed, round, steps, to = 0) {
+export function noise(seed, round, steps, to = 0) {
   const value = Math.imul(seed ^ Math.imul(round + 1, 105019) ^ Math.imul(steps + to * 11, 7927), 2654435761)
   return ((value ^ (value >>> 16)) >>> 0) / 0x100000000
 }
