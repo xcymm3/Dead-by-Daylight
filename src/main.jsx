@@ -185,6 +185,10 @@ function Choices({ label, name, choices, value, onChange, disabled = false, desc
   )
 }
 
+function RulesButton({ onOpen }) {
+  return <button type="button" className="primary rules-button" aria-haspopup="dialog" onClick={onOpen}>规则说明</button>
+}
+
 function SetupDialog({ gameStyle, onStyle, mode, onMode, online, selected, onSelect,
   difficulty, onDifficulty, onStart, onRules, onReplay }) {
   const ref = useRef(null)
@@ -198,6 +202,7 @@ function SetupDialog({ gameStyle, onStyle, mode, onMode, online, selected, onSel
       onCancel={event => event.preventDefault()}>
       <div className="panel-title">
         <h2 id="setup-title">开局设置</h2>
+        <RulesButton onOpen={onRules} />
       </div>
       <div className="setup-body">
         <Choices label="界面风格" name="style" choices={[[false, '工作风'], [true, '游戏风']]}
@@ -219,10 +224,7 @@ function SetupDialog({ gameStyle, onStyle, mode, onMode, online, selected, onSel
           )}
           {mode === 'online' && <OnlineLobby online={online} />}
         </>}
-        <div className="setup-links">
-          <button type="button" className="rules-button" onClick={onRules}>规则说明</button>
-          {onReplay && <button type="button" className="secondary" onClick={onReplay}>上一局回放</button>}
-        </div>
+        {onReplay && <button type="button" className="secondary replay-link" onClick={onReplay}>上一局回放</button>}
       </div>
     </dialog>
   )
@@ -465,7 +467,7 @@ function App() {
               </span>
               <span aria-hidden="true" data-selected={gameStyle}>游戏风</span>
             </label>
-            <button type="button" className="rules-button" onClick={() => dialog.current.showModal()}>规则说明 <span aria-hidden="true">↗</span></button>
+            <RulesButton onOpen={() => dialog.current.showModal()} />
           </div>
         </div>
       </header>

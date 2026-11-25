@@ -295,8 +295,8 @@
 }
 
 @media (max-width: 640px) {
-  .topbar-inner { gap: 8px; }
-  .topbar-tools { gap: 9px; }
+  .topbar-inner { flex-wrap: wrap; gap: 8px; padding-block: 4px; }
+  .topbar-tools { flex-wrap: wrap; gap: 9px; }
   .theme-switch { gap: 4px; }
   .game-theme .map-surface { padding-block: 38px 34px; }
   .game-theme .courtyard-plan .columns { translate: 0 -10px; }
@@ -308,8 +308,6 @@
   .product { gap: 7px; font-size: 13px; }
   .product strong { white-space: nowrap; }
   .product-icon { width: 26px; height: 26px; }
-  .topbar-tools .rules-button { padding-left: 0; font-size: 12px; }
-  .topbar-tools .rules-button span { display: none; }
   .switch-control { width: 35px; }
   .switch-control input:checked + .switch-track::before { translate: 13px; }
 }
