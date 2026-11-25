@@ -1,4 +1,4 @@
-import React, { StrictMode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import React, { StrictMode, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
   HUMAN, KILLER, ROLES, STUN_TURNS, WIDTH, EXITS, COURTYARD_LAYOUT, GATE_LAYOUT, DIFFICULTIES,
@@ -35,9 +35,10 @@ function TileIcon({ type }) {
   return <i aria-hidden="true" className={`tile-icon icon-${type}`} />
 }
 
-function actionLabel(action) {
+function actionLabel(action, role) {
   const at = action.to === undefined ? '' : coordinate(action.to)
   switch (action.kind) {
+    case 'wait': return role === KILLER ? '结束行动' : '原地等待'
     case 'repair': return `在 ${at} 点灯`
     case 'drop': return `放下 ${at} 的木板`
     case 'spawn': return `在 ${at} 出生`
@@ -49,29 +50,25 @@ function actionLabel(action) {
   }
 }
 
-const specialLabels = { repair: '点灯', drop: '放板', break: '砸板', sidestep: '侧移' }
+const boardActions = new Set(['spawn', 'move', 'vault', 'sidestep'])
 
-function TileChoices({ id, name, actions, onAction }) {
-  const ref = useRef(null)
-  function dismiss() {
-    const panel = ref.current
-    if (panel.open) panel.close()
-    else panel.hidePopover()
+function panelIcon(action) {
+  if (action.kind === 'vault') return terrain(action.to)
+  if (action.kind === 'move' && EXITS.includes(action.to)) return 'exit'
+  return { repair: 'lamp', drop: 'pallet', break: 'break', wait: 'wait' }[action.kind]
+}
+
+function ActionIcon({ type }) {
+  if (type === 'wait' || type === 'break') {
+    const path = type === 'wait' ? 'M8 5v14m8-14v14' : 'm5 20 10-11m-5-3 4-4 8 7-4 4z'
+    return (
+      <svg className="turn-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+        <path d={path} />
+      </svg>
+    )
   }
-  return (
-    <dialog id={id} ref={ref} popover="auto" className="tile-choices" aria-label={name}>
-      <strong>{name}</strong>
-      <div>
-        {actions.map(action => (
-          <button key={action.kind} type="button" className="secondary" onClick={() => {
-            dismiss()
-            onAction(action)
-          }}>{actionLabel(action)}</button>
-        ))}
-        <button type="button" className="secondary" onClick={dismiss}>取消</button>
-      </div>
-    </dialog>
-  )
+  return <TerrainArt type={type} open={type === 'exit'} />
 }
 
 function Board({ view, actions, onAction, gameStyle, replayRound, layout }) {
@@ -81,15 +78,12 @@ function Board({ view, actions, onAction, gameStyle, replayRound, layout }) {
   const columnCount = gated || legacy ? 5 : 7
   const tileName = type => (gated && type === 'exit' ? '出口门' : (legacy && LEGACY_NAMES[type]) || TILE_NAMES[type])
   const artType = type => (legacy ? type : ART_TYPES[type]) ?? type
-  const boardId = useId()
-  const wait = actions.find(action => action.kind === 'wait')
+  const targets = actions.filter(action => boardActions.has(action.kind))
   return (
     <section className="panel map-panel" aria-labelledby="map-title">
       <div className="panel-title map-title">
         <h2 id="map-title">区域地图</h2>
-        {wait ? <button type="button" className="secondary" onClick={() => onAction(wait)}>
-          {view.turn === KILLER ? '结束行动' : '原地等待'}
-        </button> : <span className="mono map-size">5 × 5</span>}
+        <span className="mono map-size">5 × 5</span>
       </div>
       <div className="map-surface">
         <div className={`plan ${legacy ? 'legacy-plan' : 'courtyard-plan'} ${gated ? 'gate-plan' : ''}`}>
@@ -103,11 +97,9 @@ function Board({ view, actions, onAction, gameStyle, replayRound, layout }) {
             {cells.map((at, slot) => {
               const type = terrain(at)
               if (!type) return <div key={slot} aria-hidden="true" />
-              const options = actions.filter(option => option.to === at)
-              const [action] = options
-              const choiceId = options.length > 1 ? `${boardId}-tile-${at}` : undefined
-              const badge = choiceId ? '走 / 放板' : action?.kind === 'vault'
-                ? (type === 'window' ? '翻窗' : '翻板') : specialLabels[action?.kind]
+              const action = targets.find(option => option.to === at)
+              const badge = action?.kind === 'vault' ? (type === 'window' ? '翻窗' : '翻板')
+                : action?.kind === 'sidestep' ? '侧移' : null
               const condition = view?.pallets[at] ?? (view?.repaired?.includes(at) ? 'repaired' : '')
               const open = type === 'exit' && view?.count >= 3
               const piece = Object.keys(ROLES).filter(role => view?.positions[role] === at)
@@ -116,18 +108,13 @@ function Board({ view, actions, onAction, gameStyle, replayRound, layout }) {
                 : { repaired: '已点亮', dropped: '已放下', broken: '已砸碎' }[condition] ??
                   (type === 'pallet' ? '靠墙，可通行' : type === 'machine' ? '未点亮' : null)
               const label = [name, status, type === 'exit' && (open ? '已开放' : '未开放'),
-                ...piece.map(role => ROLES[role]), ...options.map(actionLabel)].filter(Boolean).join('，')
+                ...piece.map(role => ROLES[role]), action && actionLabel(action)].filter(Boolean).join('，')
               return (
                 <React.Fragment key={slot}>
                   <button type="button" className={`tile tile-${type} ${condition} ${open ? 'open' : ''}`}
                     aria-label={label} title={label}
                     aria-disabled={!action} tabIndex={action ? 0 : -1}
-                    popoverTarget={choiceId} aria-haspopup={choiceId ? 'dialog' : undefined}
-                    onClick={event => {
-                      if (choiceId) {
-                        if (!('popover' in event.currentTarget)) document.getElementById(choiceId).showModal()
-                      } else if (action) onAction(action)
-                    }}>
+                    onClick={() => action && onAction(action)}>
                     {gameStyle
                       ? (type === 'machine' || type === 'exit') && <TerrainArt type={artType(type)} condition={condition} open={open} />
                       : type !== 'empty' && <TileIcon type={artType(type)} />}
@@ -139,7 +126,6 @@ function Board({ view, actions, onAction, gameStyle, replayRound, layout }) {
                     style={{ gridColumnStart: slot % columnCount + 1, gridRowStart: Math.floor(slot / columnCount) + 1 }}>
                     <b>{badge}</b>
                   </span>}
-                  {choiceId && <TileChoices id={choiceId} name={name} actions={options} onAction={onAction} />}
                 </React.Fragment>
               )
             })}
@@ -274,7 +260,7 @@ function SetupDialog({ gameStyle, onStyle, mode, onMode, online, selected, onSel
   )
 }
 
-function Controls({ game, room, paused, view, actions, onAction, onReset, onReplay, onRematch }) {
+function Controls({ game, gameStyle, room, paused, view, actions, onAction, onReset, onReplay, onRematch }) {
   const player = room ? room.role : game.player
   const role = room ? room.match.role : activeRole(game)
   const personal = role === player
@@ -282,8 +268,9 @@ function Controls({ game, room, paused, view, actions, onAction, onReset, onRepl
   const recovery = view.recovery
   const skipping = !placing && role === KILLER && recovery?.remaining > 0
   const sidestep = actions.some(action => action.kind === 'sidestep')
+  const options = actions.filter(action => panelIcon(action))
   let headline = `${ROLES[role]}行动`
-  let instruction = personal ? '点击高亮格子移动，点击带动作名称的格子与地形互动。' : '正在等待对手完成行动。'
+  let instruction = personal ? '点击高亮格子移动，或选择下方行动。' : '正在等待对手完成行动。'
   if (placing) {
     headline = `${ROLES[role]}选择出生点`
     instruction = personal ? '点击地图中标出的空格出生。' : '正在等待对手选择出生点。'
@@ -311,6 +298,17 @@ function Controls({ game, room, paused, view, actions, onAction, onReset, onRepl
           <strong>{headline}</strong>
           <p>{instruction}</p>
         </div>
+        {options.length > 0 && (
+          <div className="turn-actions" role="group" aria-label="本回合可选行动">
+            {options.map(action => (
+              <button type="button" className="secondary" key={`${action.kind}-${action.to ?? ''}`}
+                onClick={() => onAction(action)}>
+                {gameStyle && <ActionIcon type={panelIcon(action)} />}
+                {actionLabel(action, role)}
+              </button>
+            ))}
+          </div>
+        )}
         {!placing && !view.winner && !skipping && !paused && (
           <div className="action-budget">
             <span>{personal ? '你的' : '对手'}剩余行动</span>
@@ -389,14 +387,14 @@ function Rules({ dialog }) {
         <section className="rules-start" aria-labelledby="rules-start-title">
           <h2 id="rules-start-title">怎么开始</h2>
           <p>单人演练由电脑扮演另一方。好友联机时，房主先选角色，来宾扮演另一方并确认准备。开局后，屠夫先选出生空格，人类再选另一个空格。</p>
-          <p>每轮<strong>屠夫先行动，最多 2 次</strong>，然后<strong>人类行动 1 次</strong>。轮到你时，点击高亮格子移动，点带动作名称的格子点灯、放板或翻越。等待和结束行动在地图标题旁。普通移动只走上下左右，墙挡路。</p>
+          <p>每轮<strong>屠夫先行动，最多 2 次</strong>，然后<strong>人类行动 1 次</strong>。轮到你时，点击高亮格子移动。点灯、放板、翻越、等待等可用操作列在行动面板的回合提示下方。普通移动只走上下左右，墙挡路。</p>
         </section>
         <section className="rules-role rules-human" aria-labelledby="rules-human-title">
           <h2 id="rules-human-title"><span className="piece human" aria-hidden="true">人</span>扮演人类</h2>
           <p className="rules-goal">点亮任意 <strong>3 盏灯</strong>，再从任一<strong>出口门</strong>撤离即可获胜。你有 <strong>2 点生命</strong>，可以看到屠夫的位置，但不能主动走进他所在的格子。</p>
           <ul className="rules-actions">
-            <li><strong>点灯</strong>　先走到灯所在格，下次行动点击脚下标有「点灯」的灯格。</li>
-            <li><strong>放板</strong>　开局木板靠在墙上，双方可以直接走过木板格。站在木板上下左右任一相邻格，可以点击木板格放板。若也能走上木板，先选「移动」或「放下木板」。木板会搭到另一侧墙上挡住通道，若屠夫正站在木板格，他会被砸晕。</li>
+            <li><strong>点灯</strong>　先走到灯所在格，下次行动在行动面板选择点灯。</li>
+            <li><strong>放板</strong>　开局木板靠在墙上，双方可以直接走过木板格。站在木板上下左右任一相邻格，可以在行动面板选择放下对应坐标的木板。点击可通行的木板格会走上木板。木板会搭到另一侧墙上挡住通道，若屠夫正站在木板格，他会被砸晕。</li>
             <li><strong>翻窗和翻板</strong>　点击相邻的窗户或已放下的木板，即可沿原方向跨到对面的空格。移动、点灯、翻越和放板各用 1 次行动。</li>
             <li><strong>从出口门撤离</strong>　点亮 3 盏灯后，两扇墙上的出口门都会开启。在 <strong>A3</strong> 点西门，或在 <strong>E3</strong> 点东门，人类就会离开地图，本局立即结束。</li>
           </ul>
@@ -529,7 +527,7 @@ function App() {
             gameStyle={gameStyle} replayRound={replayFrame?.round ?? null} layout={mapLayout} />
           <aside className="sidebar" aria-label={replayFrame ? '回放控制' : '演练控制'}>
             {replayFrame ? <ReplayPanel frame={replayFrame} lastRound={availableReplay.length - 1} onStep={stepReplay} layout={mapLayout} />
-              : liveView ? <Controls game={game} room={room} paused={paused} view={view} actions={actions}
+              : liveView ? <Controls game={game} gameStyle={gameStyle} room={room} paused={paused} view={view} actions={actions}
                 onAction={handleAction} onReset={reset} onReplay={openReplay}
                 onRematch={() => online.send({ type: 'rematch', revision: room.revision })} />
                 : null}
