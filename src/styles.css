@@ -227,6 +227,13 @@ h1 { font-size: clamp(27px, 3.5vw, 38px); line-height: 1.14; letter-spacing: -.0
 .room-join input { min-width: 0; min-height: 34px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface); color: var(--ink); }
 .room-join input::placeholder { color: var(--muted); }
 .room-join input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.turn-messages { border: 1px solid var(--border); border-radius: var(--radius); background: var(--plan); }
+.turn-status { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.turn-history { height: 8rem; overflow-y: auto; overscroll-behavior-y: contain; padding: 4px 12px; }
+.turn-history:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.turn-event { display: grid; grid-template-columns: max-content 1fr; gap: 8px; padding-block: 4px; color: var(--text); }
+.turn-event .mono { color: var(--muted); font-size: 12px; }
+.turn-event[data-kind="skip"] { color: var(--accent); font-weight: 650; }
 .turn-status strong { display: block; font-size: 16px; }
 .turn-status p { color: var(--muted); margin-top: 4px; }
 .turn-actions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; margin-top: 10px; }
@@ -255,12 +262,6 @@ h1 { font-size: clamp(27px, 3.5vw, 38px); line-height: 1.14; letter-spacing: -.0
 .health-meter .filled { background: var(--success); }
 .exit-status { border-top: 1px solid var(--border); padding-top: 10px; }
 .exit-status strong { font-size: 12px; }
-.event-list { padding: 5px 17px; }
-.event-list li { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: start; gap: 8px; padding-block: 8px; color: var(--muted); font-size: 12px; }
-.event-list li + li { border-top: 1px solid var(--border); }
-.event-list li.latest { color: var(--ink); }
-.event-list .mono { color: var(--muted); }
-.empty-log { padding: 13px 17px; color: var(--muted); font-size: 12px; }
 
 .rules { width: min(640px, calc(100% - 30px)); max-height: calc(100% - 30px); padding: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--ink); box-shadow: 0 16px 40px var(--shadow); }
 .rules .panel-title { position: sticky; top: 0; z-index: 1; background: var(--surface); }

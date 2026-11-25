@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  HUMAN, KILLER, GATE_LAYOUT, activeRole, actionsFor, createGame, play, project, skipKillerTurn, terrain, visibleLog,
+  HUMAN, KILLER, GATE_LAYOUT, activeRole, actionsFor, createGame, play, project, skipKillerTurn, terrain, recentMessages, visibleLog,
 } from './game.js'
 import { chooseOpponentAction } from './opponent.js'
 
@@ -24,7 +24,9 @@ test('the killer places first and cannot see the human spawn or move', () => {
   assert.equal(activeRole(game), KILLER)
   game = move(wait(game), 13)
   assert.deepEqual(project(game, KILLER).positions, { [KILLER]: 6 })
-  assert.ok(visibleLog(game).every(event => !event.text.includes('人类')))
+  assert.deepEqual(visibleLog(game).map(event => event.text), [
+    '屠夫选择出生点。', '屠夫在 B1 出生。', '人类选择出生点。', '屠夫结束行动。',
+  ])
 })
 
 test('the killer stops after a hit and skips exactly two turns', () => {
@@ -79,6 +81,12 @@ test('dropping a pallet on the killer forces the first move after recovery to ei
     assert.equal(game.recovery.remaining, remaining)
     assert.deepEqual(actionsFor(game), [])
     game = wait(skipKillerTurn(game))
+  }
+  for (const role of [HUMAN, KILLER]) {
+    const skips = recentMessages(game, role).filter(event => event.kind === 'skip')
+    assert.deepEqual(skips.map(event => event.text), [2, 1, 0].map(remaining =>
+      `屠夫跳过本回合（木板砸晕，剩余 ${remaining} 回合）。`))
+    assert.equal(new Set(skips.map(event => event.round)).size, 3)
   }
   assert.deepEqual(actionsFor(game).map(action => action.to), [6, 8])
   game = play(game, { kind: 'sidestep', to: 8 })

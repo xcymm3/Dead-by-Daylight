@@ -9,6 +9,7 @@ export const EXIT_APPROACHES = [15, 19]
 export const COURTYARD_LAYOUT = 'courtyard'
 export const GATE_LAYOUT = 'courtyard-gates'
 export const DIFFICULTIES = { normal: '普通', hard: '困难' }
+export const RECOVERY_LABELS = { hit: '命中后恢复', vault: '翻窗中', break: '砸板中', stun: '木板砸晕' }
 export const STUN_TURNS = 3
 export const WINDOW = 17
 export const WALLS = [12, 22]
@@ -152,13 +153,17 @@ export function actionsFor(game) {
   return turnOptions(project(game, role), role)
 }
 
-function record(game, text, audience = 'public') {
-  const event = { round: game.round, text, audience }
+function record(game, text, audience = 'public', kind = 'action') {
+  const event = { round: game.round, text, audience, kind }
   return { ...game, log: [...game.log.slice(-99), event] }
 }
 
 export function visibleLog(game, viewer = game.player) {
   return game.log.filter(event => viewer === HUMAN || event.audience !== HUMAN)
+}
+
+export function recentMessages(game, viewer = game.player) {
+  return visibleLog(game, viewer).slice(-16)
 }
 
 function captureRound(game) {
@@ -193,7 +198,9 @@ function hit(game) {
 export function skipKillerTurn(game) {
   if (game.winner || game.turn !== KILLER || !game.recovery?.remaining) return game
   const recovery = { ...game.recovery, remaining: game.recovery.remaining - 1 }
-  let next = record({ ...game, recovery }, '屠夫跳过本回合。', KILLER)
+  const reason = RECOVERY_LABELS[recovery.kind]
+  const summary = `屠夫跳过本回合（${reason}，剩余 ${recovery.remaining} 回合）。`
+  let next = record({ ...game, recovery }, summary, KILLER, 'skip')
   if (recovery.remaining === 0 && recovery.kind !== 'stun') {
     next = { ...next, recovery: null }
     if (recovery.kind === 'vault') {
@@ -217,7 +224,8 @@ export function play(game, request) {
   const role = activeRole(game)
   const { kind, to } = action
   if (kind === 'spawn') {
-    const placed = record(setPosition(game, role, to), `${ROLES[role]}在 ${coordinate(to)} 出生。`, role)
+    const placement = record(game, `${ROLES[role]}选择出生点。`)
+    const placed = record(setPosition(placement, role, to), `${ROLES[role]}在 ${coordinate(to)} 出生。`, role)
     return role === HUMAN ? { ...captureRound(placed), round: 1 } : placed
   }
   if (role === HUMAN) return playHuman(game, action)

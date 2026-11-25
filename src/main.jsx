@@ -1,8 +1,8 @@
 import React, { StrictMode, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
-  HUMAN, KILLER, ROLES, STUN_TURNS, WIDTH, EXITS, COURTYARD_LAYOUT, GATE_LAYOUT, DIFFICULTIES,
-  activeRole, actionsFor, coordinate, createGame, isPlacement, project, terrain, visibleLog,
+  HUMAN, KILLER, ROLES, RECOVERY_LABELS, STUN_TURNS, WIDTH, EXITS, COURTYARD_LAYOUT, GATE_LAYOUT, DIFFICULTIES,
+  activeRole, actionsFor, coordinate, createGame, isPlacement, project, terrain, recentMessages,
 } from './game.js'
 import { applyMatchAction, chooseMatchOpponentAction } from './hard-opponent.js'
 import { loadOnlineSession, useOnlineRoom } from './online-client.js'
@@ -29,7 +29,6 @@ const ROLES_INFO = {
   [HUMAN]: '点亮 3 盏灯，再从任一出口门撤离。',
   [KILLER]: '根据亮灯数量巡查，将人类生命降至 0。',
 }
-const RECOVERY = { hit: '命中后恢复', vault: '翻窗中', break: '砸板中', stun: '木板砸晕' }
 
 function TileIcon({ type }) {
   return <i aria-hidden="true" className={`tile-icon icon-${type}`} />
@@ -276,7 +275,7 @@ function Controls({ game, gameStyle, room, paused, view, actions, onAction, onRe
     instruction = personal ? '点击地图中标出的空格出生。' : '正在等待对手选择出生点。'
   } else if (skipping) {
     headline = `屠夫跳过本回合`
-    instruction = `${RECOVERY[recovery.kind]}，还需跳过 ${recovery.remaining} 个屠夫回合。`
+    instruction = `${RECOVERY_LABELS[recovery.kind]}，还需跳过 ${recovery.remaining} 个屠夫回合。`
   } else if (sidestep) {
     instruction = '眩晕结束，先选择移到木板左侧或右侧。'
   } else if (role === KILLER && personal) {
@@ -294,10 +293,8 @@ function Controls({ game, gameStyle, room, paused, view, actions, onAction, onRe
     <section className="panel control-panel" aria-labelledby="control-title">
       <div className="panel-title"><h2 id="control-title">行动面板</h2><span className="quiet">你扮演{ROLES[player]} · {room ? '联机' : DIFFICULTIES[game.difficulty]}</span></div>
       <div className="panel-body">
-        <div className="turn-status" role="status">
-          <strong>{headline}</strong>
-          <p>{instruction}</p>
-        </div>
+        <TurnMessages headline={headline} instruction={instruction}
+          events={room ? room.match.log : recentMessages(game)} />
         {options.length > 0 && (
           <div className="turn-actions" role="group" aria-label="本回合可选行动">
             {options.map(action => (
@@ -357,21 +354,34 @@ function ReplayPanel({ frame, lastRound, onStep, layout }) {
   )
 }
 
-function Activity({ game, room }) {
-  const events = (room ? room.match?.log ?? [] : game ? visibleLog(game) : []).slice(-4).reverse()
+function TurnMessages({ headline, instruction, events }) {
+  const history = useRef(null)
+  const followLatest = useRef(true)
+  const last = events.at(-1)
+  useLayoutEffect(() => {
+    if (!last) followLatest.current = true
+    const box = history.current
+    if (box && followLatest.current) box.scrollTop = box.scrollHeight
+  }, [last?.round, last?.text])
+
   return (
-    <section className="panel activity-panel" aria-labelledby="activity-title">
-      <div className="panel-title"><h2 id="activity-title">操作记录</h2></div>
-      {events.length ? (
-        <ul className="event-list">
-          {events.map((event, index) => (
-            <li key={`${event.round}-${event.text}-${index}`} className={index === 0 ? 'latest' : ''}>
-              <span className="mono">{event.round ? `R${String(event.round).padStart(2, '0')}` : '配置'}</span>
-              <span>{event.text}</span>
-            </li>
-          ))}
-        </ul>
-      ) : <p className="empty-log">{game || room?.match ? '等待可见的行动记录。' : '开始后将在此显示操作记录。'}</p>}
+    <section className="turn-messages" aria-label="对局消息">
+      <div className="turn-status" role="status">
+        <strong>{headline}</strong>
+        <p>{instruction}</p>
+      </div>
+      <div className="turn-history" role="log" aria-label="最近对局消息" tabIndex={0} ref={history}
+        onScroll={event => {
+          const box = event.currentTarget
+          followLatest.current = box.scrollHeight - box.clientHeight - box.scrollTop <= 2
+        }}>
+        {events.map(event => (
+          <div className="turn-event" key={`${event.round}-${event.text}`} data-kind={event.kind}>
+            <span className="mono">{event.round ? `第 ${event.round} 轮` : '开局'}</span>
+            <span>{event.text}</span>
+          </div>
+        ))}
+      </div>
     </section>
   )
 }
@@ -533,7 +543,6 @@ function App() {
                 : null}
             {!replayFrame && match && online.error && <p className="online-error" role="alert">{online.error}</p>}
             <Status view={view} layout={mapLayout} />
-            {!replayFrame && <Activity game={game} room={room} />}
           </aside>
         </div>
       </main>

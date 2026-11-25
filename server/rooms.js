@@ -3,7 +3,7 @@ import { createServer } from 'node:http'
 import { WebSocket, WebSocketServer } from 'ws'
 import {
   HUMAN, KILLER, activeRole, actionsFor, createGame, isPlacement, play, project,
-  skipKillerTurn, visibleLog,
+  skipKillerTurn, recentMessages,
 } from '../src/game.js'
 
 const ROOM_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'
@@ -71,7 +71,7 @@ export function createOnlineServer({ allowedOrigins = [], skipDelay = 550, recon
           placing: isPlacement(game),
           view: project(game, player.role),
           actions: online && active === player.role ? actionsFor(game) : [],
-          log: visibleLog(game, player.role).slice(-4),
+          log: recentMessages(game, player.role),
           ...(game.winner ? { escapedThrough: game.escapedThrough, replay: game.replay } : {}),
         } : null,
       })
