@@ -1,4 +1,4 @@
-import React, { StrictMode, useEffect, useRef, useState } from 'react'
+import React, { StrictMode, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
   HUMAN, KILLER, ROLES, STUN_TURNS, WIDTH, EXITS, COURTYARD_LAYOUT, GATE_LAYOUT, DIFFICULTIES,
@@ -169,35 +169,62 @@ function Status({ view, layout }) {
   )
 }
 
-function Setup({ selected, onSelect, difficulty, onDifficulty, onStart }) {
+function Choices({ label, name, choices, value, onChange, disabled = false, descriptions = {} }) {
   return (
-    <section className="panel control-panel" aria-labelledby="control-title">
-      <div className="panel-title"><h2 id="control-title">演练设置</h2><span className="quiet">单人模式</span></div>
-      <form className="panel-body" onSubmit={event => { event.preventDefault(); onStart() }}>
-        <p className="control-lead">选择你要扮演的角色</p>
-        <div className="role-list" role="group" aria-label="选择角色">
-          {[HUMAN, KILLER].map(role => (
-            <button key={role} type="button" className="role-button" aria-pressed={selected === role} onClick={() => onSelect(role)}>
-              <span className={`piece ${role}`}>{role === HUMAN ? '人' : '屠'}</span>
-              <span><strong>{ROLES[role]}</strong><small>{ROLES_INFO[role]}</small></span>
-              <span className="selection-dot" aria-hidden="true" />
-            </button>
-          ))}
+    <fieldset className="difficulty-options" disabled={disabled}>
+      <legend>{label}</legend>
+      <div>
+        {choices.map(([id, text]) => (
+          <label key={id}>
+            <input type="radio" name={name} value={id} checked={value === id} onChange={() => onChange(id)} />
+            <span>{text}{descriptions[id] && <small>{descriptions[id]}</small>}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  )
+}
+
+function SetupDialog({ gameStyle, onStyle, mode, onMode, online, selected, onSelect,
+  difficulty, onDifficulty, onStart, onRules, onReplay }) {
+  const ref = useRef(null)
+  useLayoutEffect(() => {
+    const modal = ref.current
+    modal.showModal()
+    return () => modal.close()
+  }, [])
+  return (
+    <dialog ref={ref} className="rules setup-dialog" aria-labelledby="setup-title"
+      onCancel={event => event.preventDefault()}>
+      <div className="panel-title">
+        <h2 id="setup-title">开局设置</h2>
+      </div>
+      <div className="setup-body">
+        <Choices label="界面风格" name="style" choices={[[false, '工作风'], [true, '游戏风']]}
+          descriptions={{ false: '浅色图标棋盘', true: '深色庭院棋盘' }} value={gameStyle} onChange={onStyle} />
+        {gameStyle !== null && <>
+          <Choices label="对局模式" name="mode" choices={[['solo', '单人演练'], ['online', '好友联机']]}
+            value={mode} onChange={onMode} disabled={Boolean(online.room) || online.entering} />
+          {mode === 'solo' && (
+            <form onSubmit={event => {
+              event.preventDefault()
+              if (selected && difficulty) onStart()
+            }}>
+              <Choices label="你的角色" name="role" choices={Object.entries(ROLES)} descriptions={ROLES_INFO}
+                value={selected} onChange={onSelect} />
+              <Choices label="人机难度" name="difficulty" choices={Object.entries(DIFFICULTIES)}
+                value={difficulty} onChange={onDifficulty} />
+              <button type="submit" className="primary wide" disabled={!selected || !difficulty}>开始演练 <span aria-hidden="true">→</span></button>
+            </form>
+          )}
+          {mode === 'online' && <OnlineLobby online={online} />}
+        </>}
+        <div className="setup-links">
+          <button type="button" className="rules-button" onClick={onRules}>规则说明</button>
+          {onReplay && <button type="button" className="secondary" onClick={onReplay}>上一局回放</button>}
         </div>
-        <fieldset className="difficulty-options">
-          <legend>人机难度</legend>
-          <div>
-            {Object.entries(DIFFICULTIES).map(([value, name]) => (
-              <label key={value}>
-                <input type="radio" name="difficulty" value={value} checked={difficulty === value} onChange={() => onDifficulty(value)} />
-                {name}
-              </label>
-            ))}
-          </div>
-        </fieldset>
-        <button type="submit" className="primary wide">开始演练 <span aria-hidden="true">→</span></button>
-      </form>
-    </section>
+      </div>
+    </dialog>
   )
 }
 
@@ -357,11 +384,12 @@ function Rules({ dialog }) {
 }
 
 function App() {
-  const [selected, setSelected] = useState(HUMAN)
-  const [difficulty, setDifficulty] = useState('normal')
+  const [selected, setSelected] = useState(null)
+  const [difficulty, setDifficulty] = useState(null)
   const [game, setGame] = useState(null)
-  const [gameStyle, setGameStyle] = useState(false)
-  const [onlineMode, setOnlineMode] = useState(() => Boolean(loadOnlineSession()))
+  const [gameStyle, setGameStyle] = useState(null)
+  const [mode, setMode] = useState(() => loadOnlineSession() ? 'online' : null)
+  const onlineMode = mode === 'online'
   const online = useOnlineRoom(onlineMode)
   const room = onlineMode ? online.room : null
   const match = room?.match
@@ -409,6 +437,11 @@ function App() {
     setGame(current => current === game && activeRole(current) === current.player ? applyMatchAction(current, action) : current)
   }
 
+  function changeMode(nextMode) {
+    if (onlineMode && nextMode !== mode) online.leave()
+    setMode(nextMode)
+  }
+
   const reset = () => onlineMode ? online.leave() : setGame(null)
   const openReplay = () => setReplayIndex(0)
   function stepReplay(offset) {
@@ -427,7 +460,7 @@ function App() {
               <span aria-hidden="true" data-selected={!gameStyle}>工作风</span>
               <span className="switch-control">
                 <input type="checkbox" switch="" role="switch" aria-label="游戏风"
-                  checked={gameStyle} onChange={event => setGameStyle(event.target.checked)} />
+                  checked={gameStyle === true} onChange={event => setGameStyle(event.target.checked)} />
                 <span className="switch-track" aria-hidden="true" />
               </span>
               <span aria-hidden="true" data-selected={gameStyle}>游戏风</span>
@@ -454,10 +487,6 @@ function App() {
                 {room && <span className="round mono">房间 {room.code}</span>}
                 {game && <button type="button" className="secondary" onClick={reset}>重新配置</button>}
                 {match && !liveView.winner && <button type="button" className="secondary" onClick={reset}>退出房间</button>}
-                {!game && !room && <button type="button" className="secondary" onClick={() => setOnlineMode(value => !value)}>
-                  {onlineMode ? '单人演练' : '好友联机'}
-                </button>}
-                {!game && !room && availableReplay && <button type="button" className="secondary" onClick={openReplay}>上一局回放</button>}
               </>
             )}
           </div>
@@ -470,15 +499,19 @@ function App() {
               : liveView ? <Controls game={game} room={room} paused={paused} view={view} actions={actions}
                 onAction={handleAction} onReset={reset} onReplay={openReplay}
                 onRematch={() => online.send({ type: 'rematch', revision: room.revision })} />
-                : onlineMode ? <OnlineLobby online={online} />
-                  : <Setup selected={selected} onSelect={setSelected} difficulty={difficulty} onDifficulty={setDifficulty}
-                    onStart={() => setGame(createGame(selected, undefined, difficulty))} />}
+                : null}
             {!replayFrame && match && online.error && <p className="online-error" role="alert">{online.error}</p>}
             <Status view={view} layout={mapLayout} />
             {!replayFrame && <Activity game={game} room={room} />}
           </aside>
         </div>
       </main>
+      {!replayFrame && !game && (!match || gameStyle === null) && (
+        <SetupDialog gameStyle={gameStyle} onStyle={setGameStyle} mode={mode} onMode={changeMode} online={online}
+          selected={selected} onSelect={setSelected} difficulty={difficulty} onDifficulty={setDifficulty}
+          onStart={() => setGame(createGame(selected, undefined, difficulty))}
+          onRules={() => dialog.current.showModal()} onReplay={availableReplay && !room && !online.entering ? openReplay : null} />
+      )}
       <Rules dialog={dialog} />
     </div>
   )

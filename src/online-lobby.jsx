@@ -8,7 +8,7 @@ const unavailableMessage = import.meta.env.DEV
 export function OnlineLobby({ online }) {
   const [code, setCode] = useState('')
   const { room, connection, error, send, leave } = online
-  const connected = connection === 'connected'
+  const connected = connection === 'connected' && !online.entering
   const readyToStart = connected && room?.role && room.guestReady && room.opponentOnline
   const roleName = room?.role && ROLES[room.role]
 
