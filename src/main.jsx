@@ -201,7 +201,7 @@ function Setup({ selected, onSelect, difficulty, onDifficulty, onStart }) {
   )
 }
 
-function Controls({ game, room, paused, view, actions, onAction, onReset, onReplay }) {
+function Controls({ game, room, paused, view, actions, onAction, onReset, onReplay, onRematch }) {
   const player = room ? room.role : game.player
   const role = room ? room.match.role : activeRole(game)
   const personal = role === player
@@ -259,7 +259,8 @@ function Controls({ game, room, paused, view, actions, onAction, onReset, onRepl
         )}
         {view.winner && (
           <div className="extra-actions">
-            <button type="button" className="primary" onClick={onReplay}>查看本局回放</button>
+            {room?.host && <button type="button" className="primary" disabled={paused} onClick={onRematch}>开始下一局</button>}
+            <button type="button" className={room?.host ? 'secondary' : 'primary'} onClick={onReplay}>查看本局回放</button>
             <button type="button" className="secondary" onClick={onReset}>{room ? '退出房间' : '返回配置'}</button>
           </div>
         )}
@@ -369,7 +370,11 @@ function App() {
   const dialog = useRef(null)
   const completedReplay = match?.replay ?? (game?.winner ? game.replay : null)
   const availableReplay = completedReplay ?? lastReplay
-  const replayFrame = replayIndex === null ? null : availableReplay?.[replayIndex]
+  const liveOnlineMatch = Boolean(match && !match.view.winner)
+  const replayFrame = replayIndex === null || liveOnlineMatch ? null : availableReplay?.[replayIndex]
+  useEffect(() => {
+    if (liveOnlineMatch) setReplayIndex(null)
+  }, [liveOnlineMatch])
   const mapLayout = replayFrame ? replayFrame.layout ?? 'original' : GATE_LAYOUT
   const role = game && activeRole(game)
   const liveView = match?.view ?? (game && project(game, game.player))
@@ -463,7 +468,8 @@ function App() {
           <aside className="sidebar" aria-label={replayFrame ? '回放控制' : '演练控制'}>
             {replayFrame ? <ReplayPanel frame={replayFrame} lastRound={availableReplay.length - 1} onStep={stepReplay} layout={mapLayout} />
               : liveView ? <Controls game={game} room={room} paused={paused} view={view} actions={actions}
-                onAction={handleAction} onReset={reset} onReplay={openReplay} />
+                onAction={handleAction} onReset={reset} onReplay={openReplay}
+                onRematch={() => online.send({ type: 'rematch', revision: room.revision })} />
                 : onlineMode ? <OnlineLobby online={online} />
                   : <Setup selected={selected} onSelect={setSelected} difficulty={difficulty} onDifficulty={setDifficulty}
                     onStart={() => setGame(createGame(selected, undefined, difficulty))} />}

@@ -81,7 +81,6 @@ export function createOnlineServer({ allowedOrigins = [], skipDelay = 550, recon
   function advance(room, next) {
     room.game = next
     room.revision++
-    if (next.winner) room.expiresAt = Date.now() + reconnectWindow
     publish(room)
     scheduleSkip(room)
   }
@@ -111,7 +110,7 @@ export function createOnlineServer({ allowedOrigins = [], skipDelay = 550, recon
     client.room = room
     client.player = player
     if (old && old !== client.socket) old.close(4001, 'Seat resumed')
-    if (connected(room.host) && (!room.guest || connected(room.guest)) && !room.game?.winner) room.expiresAt = null
+    if (connected(room.host) && (!room.guest || connected(room.guest))) room.expiresAt = null
     send(client.socket, { type: 'session', code: room.code, token: player.token })
     publish(room)
     scheduleSkip(room)
@@ -179,11 +178,21 @@ export function createOnlineServer({ allowedOrigins = [], skipDelay = 550, recon
     if (request.type === 'leave') {
       if (!room.game?.winner) return release(room, '有玩家退出，房间已关闭。')
       player.socket = null
+      client.room = null
+      client.player = null
       send(socket, { type: 'roomClosed' })
+      if (!connected(room.host) && !connected(room.guest)) return release(room)
+      room.expiresAt = Date.now() + reconnectWindow
       return publish(room)
     }
     const game = room.game
     if (!game) return handleLobby(client, request)
+    if (request.type === 'rematch') {
+      if (!game.winner || player !== room.host || !bothOnline(room) || request.revision !== room.revision) {
+        return warn(socket, '对局结束且双方在线时，房主可以开始下一局。')
+      }
+      return advance(room, createGame(null))
+    }
     if (request.type !== 'action' || game.winner || !bothOnline(room) || activeRole(game) !== player.role) {
       return warn(socket, '现在无法提交行动。')
     }
