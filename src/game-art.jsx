@@ -305,7 +305,9 @@ export function TerrainArt({ type, condition, open }) {
       )
       break
     case 'pallet':
-      object = <g transform="translate(42 33) rotate(-50)"><PalletBoards /></g>
+      object = condition === 'broken'
+        ? <path d="m19 42 12-14 5 2-7 13Zm19 4 11-15 7 4-9 13Z" fill="var(--art-wood)" />
+        : <g transform={`translate(42 33) rotate(${condition === 'dropped' ? 65 : -50})`}><PalletBoards /></g>
       break
     case 'exit':
       object = (

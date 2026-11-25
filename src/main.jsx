@@ -8,6 +8,8 @@ import { applyMatchAction, chooseMatchOpponentAction } from './hard-opponent.js'
 import { loadOnlineSession, useOnlineRoom } from './online-client.js'
 import { OnlineLobby } from './online-lobby.jsx'
 import { loadLastReplay, saveLastReplay } from './replay.js'
+import { boardFor, CAMPAIGN, STANDARD_BOARD } from './maps.js'
+import { completeCampaignLevel, createCampaignGame, loadCampaignProgress } from './campaign.js'
 import { CharacterArt, GateArt, PerimeterArt, TerrainArt, WallRunArt } from './game-art.jsx'
 import './tokens.css'
 import './styles.css'
@@ -34,7 +36,7 @@ function TileIcon({ type }) {
   return <i aria-hidden="true" className={`tile-icon icon-${type}`} />
 }
 
-function actionLabel(action, role) {
+function actionLabel(action, role, level) {
   const at = action.to === undefined ? '' : coordinate(action.to)
   switch (action.kind) {
     case 'wait': return role === KILLER ? '结束行动' : '原地等待'
@@ -42,7 +44,7 @@ function actionLabel(action, role) {
     case 'drop': return `放下 ${at} 的木板`
     case 'spawn': return `在 ${at} 出生`
     case 'vault':
-      return `从 ${at}${terrain(action.to) === 'window' ? '翻窗' : '翻板'}至 ${coordinate(action.land)}`
+      return `从 ${at}${terrain(action.to, level) === 'window' ? '翻窗' : '翻板'}至 ${coordinate(action.land)}`
     case 'break': return `砸碎 ${at} 的木板`
     case 'sidestep': return `向侧面移动至 ${at}`
     default: return terrain(action.to) === 'exit' ? `进入${at}` : `移动至 ${at}`
@@ -51,8 +53,8 @@ function actionLabel(action, role) {
 
 const boardActions = new Set(['spawn', 'move', 'vault', 'sidestep'])
 
-function panelIcon(action) {
-  if (action.kind === 'vault') return terrain(action.to)
+function panelIcon(action, level) {
+  if (action.kind === 'vault') return terrain(action.to, level)
   if (action.kind === 'move' && EXITS.includes(action.to)) return 'exit'
   return { repair: 'lamp', drop: 'pallet', break: 'break', wait: 'wait' }[action.kind]
 }
@@ -71,6 +73,8 @@ function ActionIcon({ type }) {
 }
 
 function Board({ view, actions, onAction, gameStyle, replayRound, layout }) {
+  const level = view?.campaignLevel
+  const classic = boardFor(level) === STANDARD_BOARD
   const gated = layout === GATE_LAYOUT
   const legacy = !gated && layout !== COURTYARD_LAYOUT
   const cells = gated ? GATE_CELLS : legacy ? LEGACY_CELLS : COURTYARD_CELLS
@@ -94,7 +98,7 @@ function Board({ view, actions, onAction, gameStyle, replayRound, layout }) {
           </div>
           <div className="board" aria-label="演练地图">
             {cells.map((at, slot) => {
-              const type = terrain(at)
+              const type = terrain(at, level)
               if (!type) return <div key={slot} aria-hidden="true" />
               const action = targets.find(option => option.to === at)
               const badge = action?.kind === 'vault' ? (type === 'window' ? '翻窗' : '翻板')
@@ -107,7 +111,7 @@ function Board({ view, actions, onAction, gameStyle, replayRound, layout }) {
                 : { repaired: '已点亮', dropped: '已放下', broken: '已砸碎' }[condition] ??
                   (type === 'pallet' ? '靠墙，可通行' : type === 'machine' ? '未点亮' : null)
               const label = [name, status, type === 'exit' && (open ? '已开放' : '未开放'),
-                ...piece.map(role => ROLES[role]), action && actionLabel(action)].filter(Boolean).join('，')
+                ...piece.map(role => ROLES[role]), action && actionLabel(action, undefined, level)].filter(Boolean).join('，')
               return (
                 <React.Fragment key={slot}>
                   <button type="button" className={`tile tile-${type} ${condition} ${open ? 'open' : ''}`}
@@ -115,7 +119,7 @@ function Board({ view, actions, onAction, gameStyle, replayRound, layout }) {
                     aria-disabled={!action} tabIndex={action ? 0 : -1}
                     onClick={() => action && onAction(action)}>
                     {gameStyle
-                      ? (type === 'machine' || type === 'exit') && <TerrainArt type={artType(type)} condition={condition} open={open} />
+                      ? (!classic || type === 'machine' || type === 'exit') && type !== 'empty' && <TerrainArt type={artType(type)} condition={condition} open={open} />
                       : type !== 'empty' && <TileIcon type={artType(type)} />}
                     {type === 'exit' && <span className="exit-name">{name}</span>}
                     {action && !badge && <span className="target-mark" aria-hidden="true" />}
@@ -129,7 +133,7 @@ function Board({ view, actions, onAction, gameStyle, replayRound, layout }) {
               )
             })}
             {gameStyle && !legacy && <PerimeterArt />}
-            {gameStyle && <WallRunArt pallets={view?.pallets} legacy={legacy} />}
+            {gameStyle && classic && <WallRunArt pallets={view?.pallets} legacy={legacy} />}
             {[KILLER, HUMAN].map(role => {
               const at = view?.positions[role]
               if (at == null) return null
@@ -219,7 +223,7 @@ function RulesButton({ onOpen }) {
 }
 
 function SetupDialog({ gameStyle, onStyle, mode, onMode, online, selected, onSelect,
-  difficulty, onDifficulty, onStart, onRules, onReplay }) {
+  difficulty, onDifficulty, onStart, onRules, onReplay, onCampaign }) {
   const ref = useRef(null)
   useLayoutEffect(() => {
     const modal = ref.current
@@ -253,13 +257,65 @@ function SetupDialog({ gameStyle, onStyle, mode, onMode, online, selected, onSel
           )}
           {mode === 'online' && <OnlineLobby online={online} />}
         </>}
+        {onCampaign && <CampaignButton onOpen={onCampaign} />}
         {onReplay && <button type="button" className="secondary replay-link" onClick={onReplay}>上一局回放</button>}
       </div>
     </dialog>
   )
 }
 
-function Controls({ game, gameStyle, room, paused, view, actions, onAction, onReset, onReplay, onRematch }) {
+function CampaignButton({ onOpen, disabled }) {
+  return <button type="button" className="campaign-link" aria-haspopup="dialog" onClick={onOpen}
+    disabled={disabled}>战役（测试）</button>
+}
+
+function CampaignDialog({ cleared, currentLevel, inMatch, gameStyle, onStyle, onClose, onStart }) {
+  const [selected, setSelected] = useState(currentLevel ?? Math.min(cleared + 1, CAMPAIGN.length))
+  const [chooseStyle] = useState(gameStyle === null)
+  const ref = useRef(null)
+  useLayoutEffect(() => {
+    const dialog = ref.current
+    dialog.showModal()
+    return () => dialog.close()
+  }, [])
+  return (
+    <dialog ref={ref} className="rules setup-dialog" aria-labelledby="campaign-title"
+      onCancel={event => { event.preventDefault(); onClose() }}>
+      <div className="panel-title">
+        <h2 id="campaign-title">单人战役</h2>
+        <button type="button" className="secondary" onClick={onClose}>返回</button>
+      </div>
+      <div className="setup-body campaign-body">
+        <p>你将以人类身份挑战十张地图。每关点亮三盏灯并成功撤离，即可解锁下一关。</p>
+        {chooseStyle && <Choices label="界面风格" name="campaign-style" choices={[[false, '工作风'], [true, '游戏风']]}
+          value={gameStyle} onChange={onStyle} />}
+        <fieldset className="campaign-levels">
+          <legend>选择关卡 · 已通关 {cleared} / {CAMPAIGN.length}</legend>
+          <div>
+            {CAMPAIGN.map(({ name }, index) => {
+              const level = index + 1
+              const locked = index > cleared
+              return (
+                <label key={level} htmlFor={`level-${level}`}>
+                  <input id={`level-${level}`} type="radio" name="campaign-level" checked={selected === level}
+                    disabled={locked} onChange={() => setSelected(level)} />
+                  <span><b className="mono">{String(level).padStart(2, '0')}</b> {name}
+                    <small>{locked ? '未解锁' : level <= cleared ? '已通关' : '待挑战'}</small>
+                  </span>
+                </label>
+              )
+            })}
+          </div>
+        </fieldset>
+        <p>{CAMPAIGN[selected - 1].hint}</p>
+        {inMatch && <p>开始挑战将结束当前对局。</p>}
+        <button type="button" className="primary wide" disabled={gameStyle === null} onClick={() => onStart(selected)}>挑战第 {selected} 关</button>
+      </div>
+    </dialog>
+  )
+}
+
+function Controls({ game, gameStyle, room, paused, view, actions, onAction, onReset, onReplay, onRematch, onCampaignStart }) {
   const player = room ? room.role : game.player
   const role = room ? room.match.role : activeRole(game)
   const personal = role === player
@@ -267,7 +323,8 @@ function Controls({ game, gameStyle, room, paused, view, actions, onAction, onRe
   const recovery = view.recovery
   const skipping = !placing && role === KILLER && recovery?.remaining > 0
   const sidestep = actions.some(action => action.kind === 'sidestep')
-  const options = actions.filter(action => panelIcon(action))
+  const level = view.campaignLevel
+  const options = actions.filter(action => panelIcon(action, level))
   let headline = `${ROLES[role]}行动`
   let instruction = personal ? '点击高亮格子移动，或选择下方行动。' : '正在等待对手完成行动。'
   if (placing) {
@@ -283,6 +340,8 @@ function Controls({ game, gameStyle, room, paused, view, actions, onAction, onRe
   }
   if (view.winner) {
     headline = view.winner === player ? (room ? '你获胜了' : '演练成功') : (room ? '对局结束' : '演练结束')
+    if (level) headline = view.winner === KILLER ? `第 ${level} 关挑战失败`
+      : level === CAMPAIGN.length ? '十关全部通关' : `第 ${level} 关通关`
     const exit = room ? room.match.escapedThrough : game.escapedThrough
     instruction = view.winner === HUMAN ? `人类成功从${coordinate(exit)}撤离。` : '人类生命归零，屠夫获胜。'
   } else if (paused) {
@@ -291,7 +350,7 @@ function Controls({ game, gameStyle, room, paused, view, actions, onAction, onRe
   }
   return (
     <section className="panel control-panel" aria-labelledby="control-title">
-      <div className="panel-title"><h2 id="control-title">行动面板</h2><span className="quiet">你扮演{ROLES[player]} · {room ? '联机' : DIFFICULTIES[game.difficulty]}</span></div>
+      <div className="panel-title"><h2 id="control-title">行动面板</h2><span className="quiet">你扮演{ROLES[player]} · {room ? '联机' : level ? '单人战役' : DIFFICULTIES[game.difficulty]}</span></div>
       <div className="panel-body">
         <TurnMessages headline={headline} instruction={instruction}
           events={room ? room.match.log : recentMessages(game)} />
@@ -300,8 +359,8 @@ function Controls({ game, gameStyle, room, paused, view, actions, onAction, onRe
             {options.map(action => (
               <button type="button" className="secondary" key={`${action.kind}-${action.to ?? ''}`}
                 onClick={() => onAction(action)}>
-                {gameStyle && <ActionIcon type={panelIcon(action)} />}
-                {actionLabel(action, role)}
+                {gameStyle && <ActionIcon type={panelIcon(action, level)} />}
+                {actionLabel(action, role, level)}
               </button>
             ))}
           </div>
@@ -315,7 +374,10 @@ function Controls({ game, gameStyle, room, paused, view, actions, onAction, onRe
         {view.winner && (
           <div className="extra-actions">
             {room?.host && <button type="button" className="primary" disabled={paused} onClick={onRematch}>开始下一局</button>}
-            <button type="button" className={room?.host ? 'secondary' : 'primary'} onClick={onReplay}>查看本局回放</button>
+            {level && view.winner === KILLER && <button type="button" className="primary" onClick={() => onCampaignStart(level)}>重试本关</button>}
+            {level && level < CAMPAIGN.length && view.winner === HUMAN &&
+              <button type="button" className="primary" onClick={() => onCampaignStart(level + 1)}>挑战第 {level + 1} 关</button>}
+            <button type="button" className={room?.host || level ? 'secondary' : 'primary'} onClick={onReplay}>查看本局回放</button>
             <button type="button" className="secondary" onClick={onReset}>{room ? '退出房间' : '返回配置'}</button>
           </div>
         )}
@@ -436,6 +498,8 @@ function App() {
   const match = room?.match
   const [lastReplay, setLastReplay] = useState(loadLastReplay)
   const [replayIndex, setReplayIndex] = useState(null)
+  const [campaignOpen, setCampaignOpen] = useState(false)
+  const [cleared, setCleared] = useState(loadCampaignProgress)
   const dialog = useRef(null)
   const completedReplay = match?.replay ?? (game?.winner ? game.replay : null)
   const availableReplay = completedReplay ?? lastReplay
@@ -448,6 +512,10 @@ function App() {
   const role = game && activeRole(game)
   const liveView = match?.view ?? (game && project(game, game.player))
   const view = replayFrame ?? liveView
+  const level = view?.campaignLevel
+  const stageInfo = CAMPAIGN[level - 1]
+  const campaignUnavailable = Boolean(room || online.entering ||
+    (onlineMode && online.connection !== 'connected' && loadOnlineSession()))
   const paused = Boolean(match && (online.connection !== 'connected' || !room.opponentOnline))
   const actions = replayFrame ? [] : onlineMode ? (!paused && match?.actions) || []
     : game && role === game.player ? actionsFor(game) : []
@@ -460,7 +528,11 @@ function App() {
   }, [completedReplay])
 
   useEffect(() => {
-    if (!game || game.winner) return
+    if (game?.campaignLevel && game.winner === HUMAN) setCleared(completeCampaignLevel(cleared, game))
+  }, [game, cleared])
+
+  useEffect(() => {
+    if (!game || game.winner || campaignOpen) return
     const skipping = !isPlacement(game) && role === KILLER && game.recovery?.remaining > 0
     if (!skipping && role === game.player) return
     const timeout = setTimeout(() => {
@@ -468,7 +540,7 @@ function App() {
       setGame(current => current === game ? next : current)
     }, skipping ? 550 : 420)
     return () => clearTimeout(timeout)
-  }, [game, role])
+  }, [game, role, campaignOpen])
 
   function handleAction(action) {
     if (onlineMode) {
@@ -481,6 +553,14 @@ function App() {
   function changeMode(nextMode) {
     if (onlineMode && nextMode !== mode) online.leave()
     setMode(nextMode)
+  }
+
+  function startCampaign(level) {
+    if (campaignUnavailable || level > cleared + 1 || level > CAMPAIGN.length) return
+    changeMode('solo')
+    setReplayIndex(null)
+    setCampaignOpen(false)
+    setGame(createCampaignGame(level))
   }
 
   const reset = () => onlineMode ? online.leave() : setGame(null)
@@ -506,6 +586,7 @@ function App() {
               </span>
               <span aria-hidden="true" data-selected={gameStyle}>游戏风</span>
             </label>
+            <CampaignButton onOpen={() => setCampaignOpen(true)} disabled={campaignUnavailable} />
             <RulesButton onOpen={() => dialog.current.showModal()} />
           </div>
         </div>
@@ -513,10 +594,10 @@ function App() {
       <main className="workspace">
         <div className="workspace-heading">
           <div>
-            <h1>{replayFrame ? '对局回放' : '撤离演练'}</h1>
+            <h1>{stageInfo ? `${replayFrame ? '回放' : '战役'} · 第 ${level} 关　${stageInfo.name}` : replayFrame ? '对局回放' : '撤离演练'}</h1>
             <p>{mapLayout !== GATE_LAYOUT ? '旧地图回放，显示原对局的地形和出口位置。'
               : replayFrame ? '从出生位置开始，查看双方在每回合结束时的位置。'
-                : onlineMode ? '创建房间或输入房间码，和朋友在线对战。' : '选择人类或屠夫，与电脑对手进行回合制对局。'}</p>
+                : stageInfo ? stageInfo.hint : onlineMode ? '创建房间或输入房间码，和朋友在线对战。' : '选择人类或屠夫，与电脑对手进行回合制对局。'}</p>
           </div>
           <div className="workspace-tools">
             {replayFrame ? (
@@ -538,7 +619,7 @@ function App() {
           <aside className="sidebar" aria-label={replayFrame ? '回放控制' : '演练控制'}>
             {replayFrame ? <ReplayPanel frame={replayFrame} lastRound={availableReplay.length - 1} onStep={stepReplay} layout={mapLayout} />
               : liveView ? <Controls game={game} gameStyle={gameStyle} room={room} paused={paused} view={view} actions={actions}
-                onAction={handleAction} onReset={reset} onReplay={openReplay}
+                onAction={handleAction} onReset={reset} onReplay={openReplay} onCampaignStart={startCampaign}
                 onRematch={() => online.send({ type: 'rematch', revision: room.revision })} />
                 : null}
             {!replayFrame && match && online.error && <p className="online-error" role="alert">{online.error}</p>}
@@ -550,8 +631,12 @@ function App() {
         <SetupDialog gameStyle={gameStyle} onStyle={setGameStyle} mode={mode} onMode={changeMode} online={online}
           selected={selected} onSelect={setSelected} difficulty={difficulty} onDifficulty={setDifficulty}
           onStart={() => setGame(createGame(selected, undefined, difficulty))}
+          onCampaign={campaignUnavailable ? null : () => setCampaignOpen(true)}
           onRules={() => dialog.current.showModal()} onReplay={availableReplay && !room && !online.entering ? openReplay : null} />
       )}
+      {campaignOpen && <CampaignDialog cleared={cleared} currentLevel={game?.winner === HUMAN ? undefined : game?.campaignLevel}
+        gameStyle={gameStyle} onStyle={setGameStyle} inMatch={Boolean(game && !game.winner)}
+        onClose={() => setCampaignOpen(false)} onStart={startCampaign} />}
       <Rules dialog={dialog} />
     </div>
   )

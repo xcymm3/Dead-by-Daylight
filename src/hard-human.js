@@ -8,7 +8,7 @@ function escapeValue(game) {
   if (game.winner) return game.winner === HUMAN ? ESCAPE_VALUE : -55
   const danger = threatened(game).has(game.positions[HUMAN])
   const cooldown = game.recovery?.remaining ?? 0
-  const distance = killerTravel(game.pallets)[game.positions[KILLER]][game.positions[HUMAN]]
+  const distance = killerTravel(game.pallets, game.campaignLevel)[game.positions[KILLER]][game.positions[HUMAN]]
   const reserve = game.repaired.length < 2 ? 14 : 8
   return -remainingRoute(game) + (game.health === 2 ? reserve : 0)
     - (danger ? (game.health === 1 ? 11 : 6) : 0)

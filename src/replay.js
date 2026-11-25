@@ -1,4 +1,5 @@
 import { HUMAN, KILLER, EXITS, GATE_LAYOUT, terrain } from './game.js'
+import { CAMPAIGN } from './maps.js'
 
 const STORAGE_KEY = 'grid-operations:last-replay'
 
@@ -12,9 +13,11 @@ export function loadLastReplay(storage) {
   try {
     const frames = JSON.parse((storage ?? globalThis.localStorage).getItem(STORAGE_KEY))
     if (isComplete(frames) && frames.every((frame, index) => frame?.round === index
-      && (terrain(frame.positions?.[HUMAN]) || (frame.layout === GATE_LAYOUT && frame.winner === HUMAN
+      && frame.campaignLevel === frames[0].campaignLevel
+      && (frame.campaignLevel === undefined || (Number.isInteger(frame.campaignLevel) && CAMPAIGN[frame.campaignLevel - 1]))
+      && (terrain(frame.positions?.[HUMAN], frame.campaignLevel) || (frame.layout === GATE_LAYOUT && frame.winner === HUMAN
         && frame.positions?.[HUMAN] === null && EXITS.includes(frame.escapedThrough)))
-      && terrain(frame.positions?.[KILLER])
+      && terrain(frame.positions?.[KILLER], frame.campaignLevel)
       && frame.pallets && typeof frame.pallets === 'object'
       && Array.isArray(frame.repaired) && frame.count === frame.repaired.length
       && [0, 1, 2].includes(frame.health)

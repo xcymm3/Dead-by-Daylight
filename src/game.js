@@ -1,9 +1,11 @@
+import { boardFor, STANDARD_BOARD } from './maps.js'
+
 export const HUMAN = 'human'
 export const KILLER = 'killer'
 export const ROLES = { [HUMAN]: '人类', [KILLER]: '屠夫' }
 export const WIDTH = 5
-export const MACHINES = [5, 9, 25, 29]
-export const PALLETS = [7, 27]
+export const MACHINES = STANDARD_BOARD.machines
+export const PALLETS = STANDARD_BOARD.pallets
 export const EXITS = [2, 32]
 export const EXIT_APPROACHES = [15, 19]
 export const COURTYARD_LAYOUT = 'courtyard'
@@ -11,21 +13,16 @@ export const GATE_LAYOUT = 'courtyard-gates'
 export const DIFFICULTIES = { normal: '普通', hard: '困难' }
 export const RECOVERY_LABELS = { hit: '命中后恢复', vault: '翻窗中', break: '砸板中', stun: '木板砸晕' }
 export const STUN_TURNS = 3
-export const WINDOW = 17
-export const WALLS = [12, 22]
+export const WINDOW = STANDARD_BOARD.window
+export const WALLS = STANDARD_BOARD.walls
 
-export function terrain(at) {
+export function terrain(at, campaignLevel) {
   if (EXITS.includes(at)) return 'exit'
   if (at < 5 || at >= 30 || !Number.isInteger(at)) return null
-  if (MACHINES.includes(at)) return 'machine'
-  if (PALLETS.includes(at)) return 'pallet'
-  if (WALLS.includes(at)) return 'wall'
-  if (at === WINDOW) return 'window'
-  return 'empty'
+  return boardFor(campaignLevel).tiles[at - 5]
 }
 
-export const SPAWNS = Array.from({ length: 25 }, (_, i) => i + 5)
-  .filter(at => terrain(at) === 'empty')
+export const SPAWNS = STANDARD_BOARD.spawns
 
 export function coordinate(at, layout = GATE_LAYOUT) {
   const exit = EXITS.indexOf(at)
@@ -73,6 +70,7 @@ export function createGame(player, seed = Math.floor(Math.random() * 0x100000000
 
 export function project(game, viewer) {
   const common = {
+    ...(game.campaignLevel && { campaignLevel: game.campaignLevel }),
     round: game.round,
     turn: game.turn,
     steps: game.steps,
@@ -104,7 +102,7 @@ export function isPlacement(game) {
 }
 
 export function movement(view, role, from, to) {
-  const tile = terrain(to)
+  const tile = terrain(to, view.campaignLevel)
   if (tile === 'wall' || !tile) return null
   if (tile === 'exit' && (role !== HUMAN || view.count < 3 || from !== EXIT_APPROACHES[EXITS.indexOf(to)])) return null
 
@@ -115,7 +113,7 @@ export function movement(view, role, from, to) {
   const vault = tile === 'window' || droppedPallet
   const land = vault ? to + (to - from) : to
   if (vault) {
-    const landing = terrain(land)
+    const landing = terrain(land, view.campaignLevel)
     if (!adjacent(to).includes(land)) return null
     if (landing !== 'empty') return null
   }
@@ -133,9 +131,9 @@ export function turnOptions(view, role) {
   const options = adjacent(from).map(to => movement(view, role, from, to)).filter(Boolean)
   if (role === HUMAN) {
     for (const to of adjacent(from)) {
-      if (PALLETS.includes(to) && !view.pallets[to]) options.push({ kind: 'drop', to })
+      if (terrain(to, view.campaignLevel) === 'pallet' && !view.pallets[to]) options.push({ kind: 'drop', to })
     }
-    if (MACHINES.includes(from) && !view.repaired.includes(from)) {
+    if (terrain(from, view.campaignLevel) === 'machine' && !view.repaired.includes(from)) {
       return [...options, { kind: 'repair', to: from }]
     }
   }
@@ -147,7 +145,7 @@ export function actionsFor(game) {
   if (game.winner) return []
   const role = activeRole(game)
   if (isPlacement(game)) {
-    return SPAWNS.filter(to => role === KILLER || to !== game.positions[KILLER])
+    return boardFor(game.campaignLevel).spawns.filter(to => role === KILLER || to !== game.positions[KILLER])
       .map(to => ({ kind: 'spawn', to }))
   }
   return turnOptions(project(game, role), role)
@@ -169,6 +167,7 @@ export function recentMessages(game, viewer = game.player) {
 function captureRound(game) {
   const { round, positions, health, repaired, pallets, winner, escapedThrough } = game
   const frame = { layout: GATE_LAYOUT, round, positions, health, repaired, count: repaired.length, pallets, winner, escapedThrough }
+  if (game.campaignLevel) frame.campaignLevel = game.campaignLevel
   return { ...game, replay: [...game.replay, frame] }
 }
 
@@ -257,7 +256,7 @@ function playHuman(game, { kind, to, land }) {
     return captureRound(record({ ...escaped, winner: HUMAN, escapedThrough: land }, `人类从${coordinate(land)}撤离。`))
   }
   const moved = setPosition(game, HUMAN, land)
-  const verb = kind === 'move' ? '移动到' : terrain(to) === 'window' ? '翻窗抵达' : '翻板抵达'
+  const verb = kind === 'move' ? '移动到' : terrain(to, game.campaignLevel) === 'window' ? '翻窗抵达' : '翻板抵达'
   return endTurn(record(moved, `人类${verb} ${coordinate(land)}。`, HUMAN))
 }
 

@@ -5,8 +5,9 @@ import {
 import { chooseOpponentAction, noise } from './opponent.js'
 import { hardHuman } from './hard-human.js'
 import {
-  PLAYABLE, hiddenKey, killerTravel, palletKey, remainingRoute, threatened, visibleKey,
+  hiddenKey, killerTravel, palletKey, remainingRoute, threatened, visibleKey,
 } from './hard-planning.js'
+import { boardFor, CAMPAIGN } from './maps.js'
 
 const simulate = (game, action) => action ? play(game, action) : skipKillerTurn(game)
 const compact = game => ({ ...game, log: [], replay: [], visits: {}, opponentBelief: undefined })
@@ -114,10 +115,10 @@ function forcedKillerAction(states, options) {
   return null
 }
 
-function pursuitMaps(belief) {
+function pursuitMaps(belief, level) {
   const groups = new Map()
   for (const candidate of belief) {
-    const key = palletKey(candidate.pallets)
+    const key = palletKey(candidate.pallets, level)
     if (!groups.has(key)) groups.set(key, {
       pallets: candidate.pallets, current: new Float64Array(35),
       future: new Float64Array(35), pressure: new Float64Array(35), mass: 0,
@@ -136,8 +137,9 @@ function pursuitMaps(belief) {
     }
   }
   for (const group of groups.values()) {
-    const distance = killerTravel(group.pallets)
-    for (const k of PLAYABLE) for (const h of PLAYABLE) {
+    const distance = killerTravel(group.pallets, level)
+    const { playable } = boardFor(level)
+    for (const k of playable) for (const h of playable) {
       group.pressure[k] += group.future[h] / (1 + distance[k][h])
     }
   }
@@ -147,7 +149,7 @@ function pursuitMaps(belief) {
 function intercept(game, belief, options) {
   const view = project(game, KILLER)
   const from = view.positions[KILLER]
-  const maps = pursuitMaps(belief)
+  const maps = pursuitMaps(belief, game.campaignLevel)
   function scorePath(first, second) {
     let score = 0
     for (const map of maps) {
@@ -196,6 +198,8 @@ function intercept(game, belief, options) {
 export function chooseMatchOpponentAction(game) {
   if (game.difficulty !== 'hard') return chooseOpponentAction(game)
   if (activeRole(game) === HUMAN) return hardHuman(game)
+  const tracking = CAMPAIGN[game.campaignLevel - 1]?.tracking ?? 1
+  if (tracking < 1 && noise(game.seed, game.round, 0, 41) >= tracking) return chooseOpponentAction(game)
   const belief = game.opponentBelief
   if (!belief?.length) return chooseOpponentAction(game)
   const options = actionsFor(game)

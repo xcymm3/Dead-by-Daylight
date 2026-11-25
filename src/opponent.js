@@ -1,7 +1,8 @@
 import {
-  HUMAN, KILLER, STUN_TURNS, EXITS, EXIT_APPROACHES, MACHINES, activeRole, actionsFor, adjacent,
+  HUMAN, KILLER, STUN_TURNS, EXITS, EXIT_APPROACHES, activeRole, actionsFor, adjacent,
   isPlacement, movement, project,
 } from './game.js'
+import { boardFor, CAMPAIGN } from './maps.js'
 
 function routes(view, role, start) {
   const distance = new Map([[start, 0]])
@@ -48,7 +49,7 @@ function scoreHuman(view, action) {
     recovery: action.kind === 'drop' && action.to === view.positions[KILLER]
       ? { kind: 'stun', remaining: STUN_TURNS } : view.recovery,
   }
-  const goals = planningView.count >= 3 ? EXITS : MACHINES.filter(at => !repaired.includes(at))
+  const goals = planningView.count >= 3 ? EXITS : boardFor(view.campaignLevel).machines.filter(at => !repaired.includes(at))
   const distance = routes(planningView, HUMAN, next)
   const progress = Math.min(...goals.map(at => distance.get(at) ?? 22))
   const danger = killerThreat(planningView).has(next) ? (view.health === 1 ? 10 : 4) : 0
@@ -60,7 +61,7 @@ function scoreKiller(view, action) {
   if (action.kind === 'wait') return -100
   const next = action.kind === 'break' ? action.to : action.land
   const distance = routes(view, KILLER, next)
-  const goals = view.count >= 3 ? EXIT_APPROACHES : MACHINES
+  const goals = view.count >= 3 ? EXIT_APPROACHES : boardFor(view.campaignLevel).machines
   const priority = Math.min(...goals.map(at => (distance.get(at) ?? 10) + (view.visits[at] ?? 0) * 1.3))
   const delay = { break: 1.1, vault: 0.9 }
   return -priority - (view.visits[next] ?? 0) * 1.6 - (delay[action.kind] ?? 0)
@@ -84,6 +85,10 @@ export function chooseOpponentAction(game) {
     }, null)
   }
 
+  const patrol = CAMPAIGN[game.campaignLevel - 1]?.patrol
+  if (role === KILLER && view.steps === 1 && patrol !== undefined && noise(game.seed, view.round, 1) >= patrol) {
+    return options.find(action => action.kind === 'wait')
+  }
   const evaluate = role === HUMAN ? scoreHuman : scoreKiller
   let best = null
   let highest = -Infinity
