@@ -9,6 +9,7 @@ export const EXIT_APPROACHES = [15, 19]
 export const COURTYARD_LAYOUT = 'courtyard'
 export const GATE_LAYOUT = 'courtyard-gates'
 export const DIFFICULTIES = { normal: '普通', hard: '困难' }
+export const STUN_TURNS = 3
 export const WINDOW = 17
 export const WALLS = [12, 22]
 
@@ -236,8 +237,8 @@ function playHuman(game, { kind, to, land }) {
       next = record({
         ...next,
         knownPallets: { ...next.knownPallets, [to]: 'dropped' },
-        recovery: { kind: 'stun', remaining: 2 },
-      }, '屠夫被木板砸晕，跳过 2 个回合。', KILLER)
+        recovery: { kind: 'stun', remaining: STUN_TURNS },
+      }, `屠夫被木板砸晕，跳过 ${STUN_TURNS} 个回合。`, KILLER)
     }
     return endTurn(next)
   }

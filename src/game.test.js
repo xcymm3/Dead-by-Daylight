@@ -75,10 +75,11 @@ test('dropping a pallet on the killer forces the first move after recovery to ei
   assert.equal(drop(diagonal), diagonal)
   let game = drop(position(7, 6, HUMAN))
   assert.equal(game.pallets[7], 'dropped')
-  assert.equal(game.recovery.remaining, 2)
-  game = skipKillerTurn(game)
-  game = skipKillerTurn(wait(game))
-  game = wait(game)
+  for (const remaining of [3, 2, 1]) {
+    assert.equal(game.recovery.remaining, remaining)
+    assert.deepEqual(actionsFor(game), [])
+    game = wait(skipKillerTurn(game))
+  }
   assert.deepEqual(actionsFor(game).map(action => action.to), [6, 8])
   game = play(game, { kind: 'sidestep', to: 8 })
   assert.equal(game.positions[KILLER], 8)

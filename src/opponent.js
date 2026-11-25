@@ -1,5 +1,5 @@
 import {
-  HUMAN, KILLER, EXITS, EXIT_APPROACHES, MACHINES, activeRole, actionsFor, adjacent,
+  HUMAN, KILLER, STUN_TURNS, EXITS, EXIT_APPROACHES, MACHINES, activeRole, actionsFor, adjacent,
   isPlacement, movement, project,
 } from './game.js'
 
@@ -46,7 +46,7 @@ function scoreHuman(view, action) {
     count: repaired.length,
     pallets: action.kind === 'drop' ? { ...view.pallets, [action.to]: 'dropped' } : view.pallets,
     recovery: action.kind === 'drop' && action.to === view.positions[KILLER]
-      ? { kind: 'stun', remaining: 2 } : view.recovery,
+      ? { kind: 'stun', remaining: STUN_TURNS } : view.recovery,
   }
   const goals = planningView.count >= 3 ? EXITS : MACHINES.filter(at => !repaired.includes(at))
   const distance = routes(planningView, HUMAN, next)

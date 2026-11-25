@@ -1,7 +1,7 @@
 import React, { StrictMode, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
-  HUMAN, KILLER, ROLES, WIDTH, EXITS, COURTYARD_LAYOUT, GATE_LAYOUT, DIFFICULTIES,
+  HUMAN, KILLER, ROLES, STUN_TURNS, WIDTH, EXITS, COURTYARD_LAYOUT, GATE_LAYOUT, DIFFICULTIES,
   activeRole, actionsFor, coordinate, createGame, isPlacement, project, terrain, visibleLog,
 } from './game.js'
 import { applyMatchAction, chooseMatchOpponentAction } from './hard-opponent.js'
@@ -347,7 +347,7 @@ function Rules({ dialog }) {
             <li><strong>命中</strong>　移动到人类所在格会自动扣除他 1 点生命。你的本轮行动立即结束，并跳过接下来的 <strong>2 个屠夫回合</strong>。</li>
             <li><strong>翻窗</strong>　点击相邻的窗户后先留在原地。跳过下一个屠夫回合，才落到窗对面的空格。</li>
             <li><strong>砸板</strong>　尝试经过已放下的木板时，你会停在板前。跳过下一个屠夫回合，把木板砸碎后便可通行。</li>
-            <li><strong>被板砸晕</strong>　站在木板格时被人类放板砸中，你会跳过 2 个屠夫回合。恢复后的第一步必须走到木板左侧或右侧。</li>
+            <li><strong>被板砸晕</strong>　站在木板格时被人类放板砸中，你会跳过 {STUN_TURNS} 个屠夫回合。恢复后的第一步必须走到木板左侧或右侧。</li>
           </ul>
         </section>
       </div>
