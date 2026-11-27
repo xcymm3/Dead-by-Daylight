@@ -2,15 +2,18 @@ import React, { StrictMode, useEffect, useLayoutEffect, useRef, useState } from 
 import { createRoot } from 'react-dom/client'
 import {
   HUMAN, KILLER, ROLES, RECOVERY_LABELS, STUN_TURNS, WIDTH, EXITS, COURTYARD_LAYOUT, GATE_LAYOUT, DIFFICULTIES,
-  activeRole, actionsFor, coordinate, createGame, isPlacement, project, terrain, recentMessages,
+  activeRole, actionsFor, coordinate, isPlacement, project, terrain, recentMessages, skillArea, skippingRole, stunRemaining,
 } from './game.js'
 import { applyMatchAction, chooseMatchOpponentAction } from './hard-opponent.js'
+import { createPracticeGame } from './opponent.js'
 import { loadOnlineSession, useOnlineRoom } from './online-client.js'
 import { OnlineLobby } from './online-lobby.jsx'
 import { loadLastReplay, saveLastReplay } from './replay.js'
 import { boardFor, CAMPAIGN, STANDARD_BOARD } from './maps.js'
 import { completeCampaignLevel, createCampaignGame, loadCampaignProgress } from './campaign.js'
 import { CharacterArt, GateArt, PerimeterArt, TerrainArt, WallRunArt } from './game-art.jsx'
+import { SkillActions, SkillModes, SkillPicker, SkillSummary } from './skill-ui.jsx'
+import { validLoadout } from './skills.js'
 import './tokens.css'
 import './styles.css'
 import './game-theme.css'
@@ -47,11 +50,12 @@ function actionLabel(action, role, level) {
       return `从 ${at}${terrain(action.to, level) === 'window' ? '翻窗' : '翻板'}至 ${coordinate(action.land)}`
     case 'break': return `砸碎 ${at} 的木板`
     case 'sidestep': return `向侧面移动至 ${at}`
+    case 'trackMove': return `跟踪者移动至 ${at}`
     default: return terrain(action.to) === 'exit' ? `进入${at}` : `移动至 ${at}`
   }
 }
 
-const boardActions = new Set(['spawn', 'move', 'vault', 'sidestep'])
+const boardActions = new Set(['spawn', 'move', 'vault', 'sidestep', 'trackMove'])
 
 function panelIcon(action, level) {
   if (action.kind === 'vault') return terrain(action.to, level)
@@ -72,7 +76,7 @@ function ActionIcon({ type }) {
   return <TerrainArt type={type} open={type === 'exit'} />
 }
 
-function Board({ view, actions, onAction, gameStyle, replayRound, layout }) {
+function Board({ view, actions, onAction, gameStyle, replayRound, layout, preview }) {
   const level = view?.campaignLevel
   const classic = boardFor(level) === STANDARD_BOARD
   const gated = layout === GATE_LAYOUT
@@ -82,6 +86,13 @@ function Board({ view, actions, onAction, gameStyle, replayRound, layout }) {
   const tileName = type => (gated && type === 'exit' ? '出口门' : (legacy && LEGACY_NAMES[type]) || TILE_NAMES[type])
   const artType = type => (legacy ? type : ART_TYPES[type]) ?? type
   const targets = actions.filter(action => boardActions.has(action.kind))
+  const highlighted = new Set(!preview ? [] : preview.kind === 'blink' ? [preview.to]
+    : skillArea(view.positions[view.turn], preview.direction, preview.kind))
+  const killerDazed = stunRemaining(view?.recovery) > 0
+  const humanDazed = view?.humanStun > 0
+  const tracked = view?.tracker
+  const watcher = view?.watcher
+  const watcherLabel = watcher?.nearby === null ? '监视者待启用' : watcher?.nearby ? '监视者附近有人' : '监视者附近无人'
   return (
     <section className="panel map-panel" aria-labelledby="map-title">
       <div className="panel-title map-title">
@@ -103,18 +114,28 @@ function Board({ view, actions, onAction, gameStyle, replayRound, layout }) {
               const action = targets.find(option => option.to === at)
               const badge = action?.kind === 'vault' ? (type === 'window' ? '翻窗' : '翻板')
                 : action?.kind === 'sidestep' ? '侧移' : null
-              const condition = view?.pallets[at] ?? (view?.repaired?.includes(at) ? 'repaired' : '')
+              const sealed = view?.blockedWindows?.includes(at)
+              const condition = view?.pallets[at] ?? (sealed ? 'sealed' : view?.repaired?.includes(at) ? 'repaired' : '')
               const open = type === 'exit' && view?.count >= 3
               const piece = Object.keys(ROLES).filter(role => view?.positions[role] === at)
               const name = type === 'exit' ? coordinate(at, layout) : `${coordinate(at)} ${tileName(type)}`
-              const status = legacy ? { repaired: '已修好', dropped: '已放下', broken: '已砸碎' }[condition]
-                : { repaired: '已点亮', dropped: '已放下', broken: '已砸碎' }[condition] ??
-                  (type === 'pallet' ? '靠墙，可通行' : type === 'machine' ? '未点亮' : null)
-              const label = [name, status, type === 'exit' && (open ? '已开放' : '未开放'),
-                ...piece.map(role => ROLES[role]), action && actionLabel(action, undefined, level)].filter(Boolean).join('，')
+              const status = { repaired: legacy ? '已修好' : '已点亮', dropped: '已放下', broken: '已砸碎', sealed: '已封锁' }[condition]
+                ?? (type === 'pallet' ? '靠墙，可通行' : type === 'machine' ? (view && !view.repaired ? '亮灯位置隐藏' : '未点亮') : null)
+              const markers = [
+                sealed && { text: '封' },
+                view?.trap?.at === at && { text: '陷', label: '陷阱' },
+                tracked?.at === at && { text: '踪', label: '跟踪者' },
+                watcher?.at === at && { text: watcher.nearby === null ? '监' : watcher.nearby ? '有' : '无', label: watcherLabel,
+                  signal: watcher.nearby === null ? 'pending' : watcher.nearby ? 'near' : 'clear' },
+              ].filter(Boolean)
+              const label = [name, status, type === 'exit' && (view?.count === null ? '状态隐藏' : open ? '已开放' : '未开放'),
+                ...piece.map(role => ROLES[role] + ((role === KILLER ? killerDazed : humanDazed) ? '眩晕中' : '')),
+                ...markers.map(marker => marker.label),
+                action && actionLabel(action, undefined, level)].filter(Boolean).join('，')
               return (
                 <React.Fragment key={slot}>
                   <button type="button" className={`tile tile-${type} ${condition} ${open ? 'open' : ''}`}
+                    data-skill-target={highlighted.has(at) || undefined}
                     aria-label={label} title={label}
                     aria-disabled={!action} tabIndex={action ? 0 : -1}
                     onClick={() => action && onAction(action)}>
@@ -124,6 +145,9 @@ function Board({ view, actions, onAction, gameStyle, replayRound, layout }) {
                     {type === 'exit' && <span className="exit-name">{name}</span>}
                     {action && !badge && <span className="target-mark" aria-hidden="true" />}
                     {condition === 'repaired' && <span className="tile-check" aria-hidden="true">✓</span>}
+                    {markers.length > 0 && <span className="map-skill-markers" aria-hidden="true">
+                      {markers.map(marker => <b key={marker.text} data-signal={marker.signal}>{marker.text}</b>)}
+                    </span>}
                   </button>
                   {badge && <span className="tile-action-label" aria-hidden="true"
                     style={{ gridColumnStart: slot % columnCount + 1, gridRowStart: Math.floor(slot / columnCount) + 1 }}>
@@ -139,26 +163,29 @@ function Board({ view, actions, onAction, gameStyle, replayRound, layout }) {
               if (at == null) return null
               const shared = view.positions[HUMAN] === view.positions[KILLER]
               const slot = cells.indexOf(at)
+              const dazed = role === KILLER ? killerDazed : humanDazed
               return (
-                <div key={role} className={`piece-position ${shared ? `shared-${role}` : ''}`}
+                <div key={role} className={`piece-position ${shared ? `shared-${role}` : ''}`} data-dazed={dazed || undefined}
                   style={{ '--col': slot % columnCount, '--row': Math.floor(slot / columnCount) }} aria-hidden="true">
                   {gameStyle ? <CharacterArt role={role} at={slot} columns={columnCount} health={view.health} replayRound={replayRound} />
                     : <span className={`piece ${role}`}>{role === HUMAN ? '人' : '屠'}</span>}
+                  {dazed && <span className="stun-mark"><span>✦ ✧</span>眩晕</span>}
                 </div>
               )
             })}
             {gameStyle && !legacy && <PerimeterArt foreground />}
             {gated && EXITS.map((exit, index) => {
               const action = actions.find(option => option.to === exit)
-              const open = (view?.count ?? 0) >= 3
+              const open = view?.count >= 3
+              const hidden = view?.count === null
               const name = coordinate(exit)
-              const label = `${name}，${open ? '已开启' : '未开启'}${action ? '，可撤离' : ''}`
+              const label = `${name}，${hidden ? '状态隐藏' : open ? '已开启' : '未开启'}${action ? '，可撤离' : ''}`
               return (
                 <button key={exit} type="button" className={`wall-gate ${index ? 'wall-gate-east' : 'wall-gate-west'} ${open ? 'open' : ''}`}
                   aria-label={label} title={label} aria-disabled={!action} tabIndex={action ? 0 : -1}
                   onClick={() => action && onAction(action)}>
                   {gameStyle ? <GateArt open={open} east={Boolean(index)} /> : <TileIcon type="exit" />}
-                  <span className="gate-label">{action ? `${name}撤离` : name}</span>
+                  <span className="gate-label">{action ? `${name}撤离` : hidden ? `${name} · 隐藏` : name}</span>
                 </button>
               )
             })}
@@ -175,9 +202,9 @@ function Board({ view, actions, onAction, gameStyle, replayRound, layout }) {
   )
 }
 
-function Status({ view, layout }) {
-  const count = view?.count ?? 0
-  const health = view?.health ?? 2
+function Status({ view, layout, player }) {
+  const count = view ? view.count : 0
+  const health = view ? view.health : 2
   const legacy = layout !== GATE_LAYOUT && layout !== COURTYARD_LAYOUT
   const cellar = layout === COURTYARD_LAYOUT
   return (
@@ -185,18 +212,19 @@ function Status({ view, layout }) {
       <div className="panel-title"><h2 id="status-title">对局状态</h2></div>
       <div className="metrics">
         <div className="metric">
-          <div className="metric-heading"><span>{legacy ? '已修机器' : '已点亮的灯'}</span><strong className="mono">{count}<small> / 4</small></strong></div>
-          <div className="meter" aria-hidden="true">
+          <div className="metric-heading"><span>{legacy ? '已修机器' : '已点亮的灯'}</span><strong className="mono">{count === null ? '隐藏' : <>{count}<small> / 4</small></>}</strong></div>
+          {count !== null && <div className="meter" aria-hidden="true">
             {[1, 2, 3, 4].map(value => <span key={value} className={count >= value ? 'filled' : ''} />)}
-          </div>
+          </div>}
         </div>
         <div className="metric">
-          <div className="metric-heading"><span>人类生命</span><strong className="mono">{health}<small> / 2</small></strong></div>
-          <div className="meter health-meter" aria-hidden="true">
+          <div className="metric-heading"><span>人类生命</span><strong className="mono">{health === null ? '隐藏' : <>{health}<small> / 2</small></>}</strong></div>
+          {health !== null && <div className="meter health-meter" aria-hidden="true">
             {[1, 2].map(value => <span key={value} className={health >= value ? 'filled' : ''} />)}
-          </div>
+          </div>}
         </div>
-        <div className="exit-status"><TileIcon type={cellar ? 'hatch' : 'exit'} /><span>{cellar ? '撤离地窖' : '撤离出口'}</span><strong>{count >= 3 ? '已开启' : legacy ? '修好 3 台后开放' : '点亮 3 盏后开启'}</strong></div>
+        <div className="exit-status"><TileIcon type={cellar ? 'hatch' : 'exit'} /><span>{cellar ? '撤离地窖' : '撤离出口'}</span><strong>{count === null ? '隐藏' : count >= 3 ? '已开启' : legacy ? '修好 3 台后开放' : '点亮 3 盏后开启'}</strong></div>
+        {player && <SkillSummary view={view} player={player} />}
       </div>
     </section>
   )
@@ -223,8 +251,9 @@ function RulesButton({ onOpen }) {
 }
 
 function SetupDialog({ gameStyle, onStyle, mode, onMode, online, selected, onSelect,
-  difficulty, onDifficulty, onStart, onRules, onReplay, onCampaign }) {
+  difficulty, onDifficulty, skillCount, skillSelection, onSkillCount, onSkillToggle, onStart, onRules, onReplay, onCampaign }) {
   const ref = useRef(null)
+  const ready = selected && difficulty && validLoadout(selected, skillCount, skillSelection, true)
   useLayoutEffect(() => {
     const modal = ref.current
     modal.showModal()
@@ -246,13 +275,15 @@ function SetupDialog({ gameStyle, onStyle, mode, onMode, online, selected, onSel
           {mode === 'solo' && (
             <form onSubmit={event => {
               event.preventDefault()
-              if (selected && difficulty) onStart()
+              if (ready) onStart()
             }}>
               <Choices label="你的角色" name="role" choices={Object.entries(ROLES)} descriptions={ROLES_INFO}
                 value={selected} onChange={onSelect} />
               <Choices label="人机难度" name="difficulty" choices={Object.entries(DIFFICULTIES)}
                 value={difficulty} onChange={onDifficulty} />
-              <button type="submit" className="primary wide" disabled={!selected || !difficulty}>开始演练 <span aria-hidden="true">→</span></button>
+              <SkillModes count={skillCount} onChange={onSkillCount} />
+              <SkillPicker role={selected} count={skillCount} selected={skillSelection} onToggle={onSkillToggle} solo />
+              <button type="submit" className="primary wide" disabled={!ready}>开始演练 <span aria-hidden="true">→</span></button>
             </form>
           )}
           {mode === 'online' && <OnlineLobby online={online} />}
@@ -269,9 +300,16 @@ function CampaignButton({ onOpen, disabled }) {
     disabled={disabled}>战役（测试）</button>
 }
 
-function CampaignDialog({ cleared, currentLevel, inMatch, gameStyle, onStyle, onClose, onStart }) {
+function changeSkillSelection(selection, limit, id, checked) {
+  if (!checked) return selection.filter(skill => skill !== id)
+  return selection.length < limit && !selection.includes(id) ? [...selection, id] : selection
+}
+
+function CampaignDialog({ cleared, currentLevel, inMatch, gameStyle, onStyle, skills, onClose, onStart }) {
   const [selected, setSelected] = useState(currentLevel ?? Math.min(cleared + 1, CAMPAIGN.length))
   const [chooseStyle] = useState(gameStyle === null)
+  const [skillCount, setSkillCount] = useState(skills.length)
+  const [skillSelection, setSkillSelection] = useState(skills)
   const ref = useRef(null)
   useLayoutEffect(() => {
     const dialog = ref.current
@@ -308,20 +346,25 @@ function CampaignDialog({ cleared, currentLevel, inMatch, gameStyle, onStyle, on
           </div>
         </fieldset>
         <p>{CAMPAIGN[selected - 1].hint}</p>
+        <SkillModes count={skillCount} onChange={count => { setSkillCount(count); setSkillSelection([]) }} />
+        <SkillPicker role={HUMAN} count={skillCount} selected={skillSelection} solo
+          onToggle={(id, checked) => setSkillSelection(selection => changeSkillSelection(selection, skillCount, id, checked))} />
         {inMatch && <p>开始挑战将结束当前对局。</p>}
-        <button type="button" className="primary wide" disabled={gameStyle === null} onClick={() => onStart(selected)}>挑战第 {selected} 关</button>
+        <button type="button" className="primary wide"
+          disabled={gameStyle === null || !validLoadout(HUMAN, skillCount, skillSelection, true)}
+          onClick={() => onStart(selected, skillSelection)}>挑战第 {selected} 关</button>
       </div>
     </dialog>
   )
 }
 
-function Controls({ game, gameStyle, room, paused, view, actions, onAction, onReset, onReplay, onRematch, onCampaignStart }) {
+function Controls({ game, gameStyle, room, paused, view, actions, onAction, onPreview, onReset, onReplay, onRematch, onCampaignStart }) {
   const player = room ? room.role : game.player
   const role = room ? room.match.role : activeRole(game)
   const personal = role === player
   const placing = room ? room.match.placing : isPlacement(game)
   const recovery = view.recovery
-  const skipping = !placing && role === KILLER && recovery?.remaining > 0
+  const skipping = !placing && (role === KILLER ? recovery?.remaining > 0 : view.humanStun > 0)
   const sidestep = actions.some(action => action.kind === 'sidestep')
   const level = view.campaignLevel
   const options = actions.filter(action => panelIcon(action, level))
@@ -331,10 +374,16 @@ function Controls({ game, gameStyle, room, paused, view, actions, onAction, onRe
     headline = `${ROLES[role]}选择出生点`
     instruction = personal ? '点击地图中标出的空格出生。' : '正在等待对手选择出生点。'
   } else if (skipping) {
-    headline = `屠夫跳过本回合`
-    instruction = `${RECOVERY_LABELS[recovery.kind]}，还需跳过 ${recovery.remaining} 个屠夫回合。`
+    headline = `${ROLES[role]}跳过本回合`
+    instruction = role === KILLER ? `${RECOVERY_LABELS[recovery.kind]}，还需跳过 ${recovery.remaining} 个屠夫回合。`
+      : `被跟踪者抓到，还需跳过 ${view.humanStun} 个人类回合。`
   } else if (sidestep) {
     instruction = '眩晕结束，先选择移到木板左侧或右侧。'
+  } else if (role === KILLER && personal && view.tracker?.started) {
+    headline = '操控跟踪者'
+    instruction = '点击高亮格子移动跟踪者，或收回跟踪者继续本轮行动。'
+  } else if (role === KILLER && personal && view.steps === 0) {
+    instruction = '移动已用完。可以选择剩余技能或结束行动。'
   } else if (role === KILLER && personal) {
     instruction = '点击高亮格子移动，也可以提前结束行动。'
   }
@@ -365,15 +414,16 @@ function Controls({ game, gameStyle, room, paused, view, actions, onAction, onRe
             ))}
           </div>
         )}
+        <SkillActions actions={actions} role={role} onAction={onAction} onPreview={onPreview} />
         {!placing && !view.winner && !skipping && !paused && (
           <div className="action-budget">
-            <span>{personal ? '你的' : '对手'}剩余行动</span>
-            <strong className="mono">{role === KILLER ? view.steps : 1}</strong>
+            <span>{role === KILLER && view.tracker?.started ? '跟踪者' : personal ? '你的' : '对手'}剩余行动</span>
+            <strong className="mono">{role === KILLER ? (view.tracker?.started ? view.tracker.steps : view.steps) : 1}</strong>
           </div>
         )}
         {view.winner && (
           <div className="extra-actions">
-            {room?.host && <button type="button" className="primary" disabled={paused} onClick={onRematch}>开始下一局</button>}
+            {room?.host && <button type="button" className="primary" disabled={paused} onClick={onRematch}>设置下一局</button>}
             {level && view.winner === KILLER && <button type="button" className="primary" onClick={() => onCampaignStart(level)}>重试本关</button>}
             {level && level < CAMPAIGN.length && view.winner === HUMAN &&
               <button type="button" className="primary" onClick={() => onCampaignStart(level + 1)}>挑战第 {level + 1} 关</button>}
@@ -437,8 +487,8 @@ function TurnMessages({ headline, instruction, events }) {
           const box = event.currentTarget
           followLatest.current = box.scrollHeight - box.clientHeight - box.scrollTop <= 2
         }}>
-        {events.map(event => (
-          <div className="turn-event" key={`${event.round}-${event.text}`} data-kind={event.kind}>
+        {events.map((event, index) => (
+          <div className="turn-event" key={`${event.round}-${event.text}-${index}`} data-kind={event.kind}>
             <span className="mono">{event.round ? `第 ${event.round} 轮` : '开局'}</span>
             <span>{event.text}</span>
           </div>
@@ -459,7 +509,8 @@ function Rules({ dialog }) {
         <section className="rules-start" aria-labelledby="rules-start-title">
           <h2 id="rules-start-title">怎么开始</h2>
           <p>单人演练由电脑扮演另一方。好友联机时，房主先选角色，来宾扮演另一方并确认准备。开局后，屠夫先选出生空格，人类再选另一个空格。</p>
-          <p>每轮<strong>屠夫先行动，最多 2 次</strong>，然后<strong>人类行动 1 次</strong>。轮到你时，点击高亮格子移动。点灯、放板、翻越、等待等可用操作列在行动面板的回合提示下方。普通移动只走上下左右，墙挡路。</p>
+          <p>开局可选无技能、2 技能或 3 技能。联机时每方从 8 项技能中自选，单人演练从精简列表中选择。开局后可查看双方技能和主动技能剩余次数。</p>
+          <p>每轮<strong>屠夫先行动，默认最多 2 次</strong>，然后<strong>人类行动 1 次</strong>。轮到你时，点击高亮格子移动。点灯、放板、翻越、等待和技能等操作列在行动面板中。普通移动只走上下左右，墙挡路。</p>
         </section>
         <section className="rules-role rules-human" aria-labelledby="rules-human-title">
           <h2 id="rules-human-title"><span className="piece human" aria-hidden="true">人</span>扮演人类</h2>
@@ -473,9 +524,9 @@ function Rules({ dialog }) {
         </section>
         <section className="rules-role rules-killer" aria-labelledby="rules-killer-title">
           <h2 id="rules-killer-title"><span className="piece killer" aria-hidden="true">屠</span>扮演屠夫</h2>
-          <p className="rules-goal">找到人类，让他的<strong>生命归零</strong>即可获胜。你能看到人类的剩余生命和亮灯总数。人类的位置、行动和具体哪盏灯亮起都隐藏。</p>
+          <p className="rules-goal">找到人类，让他的<strong>生命归零</strong>即可获胜。默认可看到人类的剩余生命和亮灯总数。人类的位置、行动和具体哪盏灯亮起都隐藏。</p>
           <ul className="rules-actions">
-            <li><strong>命中</strong>　移动到人类所在格会自动扣除他 1 点生命。你的本轮行动立即结束，并跳过接下来的 <strong>2 个屠夫回合</strong>。</li>
+            <li><strong>命中与眩晕</strong>　移动到人类所在格会自动扣除他 1 点生命。默认你的本轮行动立即结束，并眩晕 2 回合。每剩 1 回合眩晕就跳过 1 次自己的行动。</li>
             <li><strong>翻窗</strong>　点击相邻的窗户后先留在原地。跳过下一个屠夫回合，才落到窗对面的空格。</li>
             <li><strong>砸板</strong>　尝试经过已放下的木板时，你会停在板前。跳过下一个屠夫回合，把木板砸碎后便可通行。</li>
             <li><strong>被板砸晕</strong>　站在木板格时被人类放板砸中，你会跳过 {STUN_TURNS} 个屠夫回合。恢复后的第一步必须走到木板左侧或右侧。</li>
@@ -489,6 +540,9 @@ function Rules({ dialog }) {
 function App() {
   const [selected, setSelected] = useState(null)
   const [difficulty, setDifficulty] = useState(null)
+  const [skillCount, setSkillCount] = useState(0)
+  const [skillSelection, setSkillSelection] = useState([])
+  const [preview, setPreview] = useState(null)
   const [game, setGame] = useState(null)
   const [gameStyle, setGameStyle] = useState(null)
   const [mode, setMode] = useState(() => loadOnlineSession() ? 'online' : null)
@@ -499,6 +553,7 @@ function App() {
   const [lastReplay, setLastReplay] = useState(loadLastReplay)
   const [replayIndex, setReplayIndex] = useState(null)
   const [campaignOpen, setCampaignOpen] = useState(false)
+  const [campaignSkills, setCampaignSkills] = useState([])
   const [cleared, setCleared] = useState(loadCampaignProgress)
   const dialog = useRef(null)
   const completedReplay = match?.replay ?? (game?.winner ? game.replay : null)
@@ -519,6 +574,8 @@ function App() {
   const paused = Boolean(match && (online.connection !== 'connected' || !room.opponentOnline))
   const actions = replayFrame ? [] : onlineMode ? (!paused && match?.actions) || []
     : game && role === game.player ? actionsFor(game) : []
+  const legalPreview = preview && actions.some(action =>
+    action.kind === preview.kind && action.direction === preview.direction && action.to === preview.to) ? preview : null
 
   useEffect(() => {
     if (completedReplay) {
@@ -533,7 +590,7 @@ function App() {
 
   useEffect(() => {
     if (!game || game.winner || campaignOpen) return
-    const skipping = !isPlacement(game) && role === KILLER && game.recovery?.remaining > 0
+    const skipping = skippingRole(game)
     if (!skipping && role === game.player) return
     const timeout = setTimeout(() => {
       const next = applyMatchAction(game, skipping ? null : chooseMatchOpponentAction(game))
@@ -543,8 +600,10 @@ function App() {
   }, [game, role, campaignOpen])
 
   function handleAction(action) {
+    setPreview(null)
     if (onlineMode) {
-      if (match && !paused) online.send({ type: 'action', revision: room.revision, action: { kind: action.kind, to: action.to } })
+      if (match && !paused) online.send({ type: 'action', revision: room.revision,
+        action: { kind: action.kind, to: action.to, direction: action.direction } })
       return
     }
     setGame(current => current === game && activeRole(current) === current.player ? applyMatchAction(current, action) : current)
@@ -555,12 +614,17 @@ function App() {
     setMode(nextMode)
   }
 
-  function startCampaign(level) {
+  function toggleSkill(id, checked) {
+    setSkillSelection(selection => changeSkillSelection(selection, skillCount, id, checked))
+  }
+
+  function startCampaign(level, skills = campaignSkills) {
     if (campaignUnavailable || level > cleared + 1 || level > CAMPAIGN.length) return
     changeMode('solo')
     setReplayIndex(null)
     setCampaignOpen(false)
-    setGame(createCampaignGame(level))
+    setCampaignSkills(skills)
+    setGame(createCampaignGame(level, undefined, skills))
   }
 
   const reset = () => onlineMode ? online.leave() : setGame(null)
@@ -614,29 +678,31 @@ function App() {
           </div>
         </div>
         <div className="workspace-layout">
-          <Board key={Boolean(replayFrame)} view={view} actions={actions} onAction={handleAction}
+          <Board key={Boolean(replayFrame)} view={view} actions={actions} onAction={handleAction} preview={legalPreview}
             gameStyle={gameStyle} replayRound={replayFrame?.round ?? null} layout={mapLayout} />
           <aside className="sidebar" aria-label={replayFrame ? '回放控制' : '演练控制'}>
             {replayFrame ? <ReplayPanel frame={replayFrame} lastRound={availableReplay.length - 1} onStep={stepReplay} layout={mapLayout} />
               : liveView ? <Controls game={game} gameStyle={gameStyle} room={room} paused={paused} view={view} actions={actions}
-                onAction={handleAction} onReset={reset} onReplay={openReplay} onCampaignStart={startCampaign}
-                onRematch={() => online.send({ type: 'rematch', revision: room.revision })} />
+                onAction={handleAction} onPreview={setPreview} onReset={reset} onReplay={openReplay} onCampaignStart={startCampaign}
+                onRematch={() => online.send({ type: 'rematch', revision: room.revision, configure: true })} />
                 : null}
             {!replayFrame && match && online.error && <p className="online-error" role="alert">{online.error}</p>}
-            <Status view={view} layout={mapLayout} />
+            <Status view={view} layout={mapLayout} player={room?.role ?? game?.player} />
           </aside>
         </div>
       </main>
       {!replayFrame && !game && (!match || gameStyle === null) && (
         <SetupDialog gameStyle={gameStyle} onStyle={setGameStyle} mode={mode} onMode={changeMode} online={online}
-          selected={selected} onSelect={setSelected} difficulty={difficulty} onDifficulty={setDifficulty}
-          onStart={() => setGame(createGame(selected, undefined, difficulty))}
+          selected={selected} onSelect={role => { setSelected(role); setSkillSelection([]) }} difficulty={difficulty} onDifficulty={setDifficulty}
+          skillCount={skillCount} skillSelection={skillSelection} onSkillToggle={toggleSkill}
+          onSkillCount={count => { setSkillCount(count); setSkillSelection([]) }}
+          onStart={() => setGame(createPracticeGame(selected, skillCount, skillSelection, difficulty))}
           onCampaign={campaignUnavailable ? null : () => setCampaignOpen(true)}
           onRules={() => dialog.current.showModal()} onReplay={availableReplay && !room && !online.entering ? openReplay : null} />
       )}
       {campaignOpen && <CampaignDialog cleared={cleared} currentLevel={game?.winner === HUMAN ? undefined : game?.campaignLevel}
         gameStyle={gameStyle} onStyle={setGameStyle} inMatch={Boolean(game && !game.winner)}
-        onClose={() => setCampaignOpen(false)} onStart={startCampaign} />}
+        skills={campaignSkills} onClose={() => setCampaignOpen(false)} onStart={startCampaign} />}
       <Rules dialog={dialog} />
     </div>
   )

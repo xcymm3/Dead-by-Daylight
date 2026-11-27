@@ -331,6 +331,89 @@ h1 { font-size: clamp(27px, 3.5vw, 38px); line-height: 1.14; letter-spacing: -.0
   }
 }
 
+.difficulty-options.skill-modes > div { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.skill-picker { min-inline-size: 0; margin: 0; padding: 0; border: 0; }
+.skill-picker legend { margin-block-end: 6px; }
+.skill-picker legend .quiet { margin-inline-start: 5px; }
+.skill-picker label {
+  display: flex;
+  align-items: start;
+  gap: 9px;
+  min-block-size: 48px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.skill-picker label + label { margin-block-start: 6px; }
+.skill-picker input { margin: .35em 0 0; accent-color: var(--accent); }
+.skill-picker label:has(:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.skill-picker label:has(:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.skill-picker label:has(:disabled) { color: var(--muted); cursor: default; }
+.skill-picker small { line-height: 1.45; }
+.online-lobby .skill-picker { margin-block-start: 12px; }
+.skill-summary { display: grid; gap: 9px; border-top: 1px solid var(--border); padding-top: 10px; }
+.skill-summary h3 { font-size: 12px; color: var(--muted); }
+.skill-summary ul { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+.skill-summary li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 12px;
+}
+.skill-summary :is(small, p) { color: var(--muted); font-size: 12px; }
+.skill-actions details { border: 1px solid var(--border); border-radius: 5px; }
+.skill-actions summary { cursor: pointer; padding: 10px; color: var(--ink); }
+.skill-directions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; padding: 0 6px 6px; }
+.tile[data-skill-target] { outline: 2px solid var(--accent); outline-offset: -3px; }
+.map-skill-markers {
+  position: absolute;
+  inset-block-end: 2px;
+  inset-inline-start: 3px;
+  display: flex;
+  gap: 2px;
+  font-size: 10px;
+  pointer-events: none;
+  transform: var(--plan-upright, none);
+  z-index: 2;
+}
+.map-skill-markers b, .stun-mark {
+  padding: 1px 3px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  color: var(--accent);
+  background: var(--surface);
+}
+.map-skill-markers [data-signal="clear"] { color: var(--success); background: var(--success-soft); }
+.map-skill-markers [data-signal="near"] { color: var(--killer); background: var(--killer-soft); }
+.stun-mark {
+  position: absolute;
+  inset-block-start: -4px;
+  inset-inline-end: 0;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+  transform: var(--plan-upright, none);
+}
+.stun-mark span { display: inline-block; margin-inline-end: 2px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .piece-position[data-dazed] > :is(.piece, .character-art) { animation: dazed-pawn 500ms 140ms ease-out; }
+  .stun-mark span { animation: dazed-stars 550ms ease-out 2; }
+  @keyframes dazed-pawn {
+    0%, 100% { rotate: 0deg; }
+    25%, 75% { rotate: -11deg; }
+    50% { rotate: 10deg; }
+  }
+  @keyframes dazed-stars {
+    0%, 100% { transform: none; opacity: 1; }
+    50% { transform: translateY(-3px) rotate(16deg); opacity: .65; }
+  }
+}
+
 @media (max-width: 800px) {
   .topbar-inner, .workspace { width: calc(100% - 36px); }
   .workspace-layout { grid-template-columns: minmax(0, 1.25fr) minmax(255px, 1fr); gap: 12px; }

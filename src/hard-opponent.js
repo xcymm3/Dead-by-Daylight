@@ -1,6 +1,6 @@
 import {
   HUMAN, KILLER, EXIT_APPROACHES, activeRole, actionsFor, isPlacement,
-  play, project, skipKillerTurn, turnOptions,
+  play, project, skipTurn, turnOptions,
 } from './game.js'
 import { chooseOpponentAction, noise } from './opponent.js'
 import { hardHuman } from './hard-human.js'
@@ -10,13 +10,13 @@ import {
 } from './hard-planning.js'
 import { boardFor, CAMPAIGN } from './maps.js'
 
-const simulate = (game, action) => action ? play(game, action) : skipKillerTurn(game)
+const simulate = (game, action) => action ? play(game, action) : skipTurn(game)
 const compact = game => ({ ...game, log: [], replay: [], visits: {}, opponentBelief: undefined })
 
 export function applyMatchAction(game, action) {
   let next = simulate(game, action)
   const hell = game.difficulty === 'hell'
-  if (next === game || (!hell && (next.winner || game.difficulty !== 'hard'))) return next
+  if (game.skills || next === game || (!hell && (next.winner || game.difficulty !== 'hard'))) return next
   const role = activeRole(game)
   if (game.player === KILLER) {
     if (isPlacement(game)) return next
@@ -206,7 +206,7 @@ function intercept(game, belief, options) {
 
 export function chooseMatchOpponentAction(game) {
   const hell = game.difficulty === 'hell'
-  if (game.difficulty !== 'hard' && !hell) return chooseOpponentAction(game)
+  if (game.skills || (game.difficulty !== 'hard' && !hell)) return chooseOpponentAction(game)
   if (activeRole(game) === HUMAN) {
     return hell && game.player === KILLER ? hellFollowUpAction(game) ?? hardHuman(game) : hardHuman(game)
   }

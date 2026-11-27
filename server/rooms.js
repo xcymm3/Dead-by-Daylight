@@ -3,8 +3,9 @@ import { createServer } from 'node:http'
 import { WebSocket, WebSocketServer } from 'ws'
 import {
   HUMAN, KILLER, activeRole, actionsFor, createGame, isPlacement, play, project,
-  skipKillerTurn, recentMessages,
+  skippingRole, skipTurn, recentMessages,
 } from '../src/game.js'
+import { SKILL_MODES, validLoadout, validSkillSelection } from '../src/skills.js'
 
 const ROOM_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'
 const ROOM_GRACE = 10 * 60_000
@@ -16,7 +17,7 @@ function send(socket, message) {
 }
 
 function seat(socket) {
-  return { socket, token: randomBytes(24).toString('base64url'), role: null, ready: false }
+  return { socket, token: randomBytes(24).toString('base64url'), role: null, ready: false, skills: [] }
 }
 
 const connected = player => player?.socket?.readyState === WebSocket.OPEN
@@ -62,6 +63,8 @@ export function createOnlineServer({ allowedOrigins = [], skipDelay = 550, recon
         code: room.code,
         host,
         role: player.role,
+        skillCount: room.skillCount,
+        selectedSkills: player.skills,
         guestJoined: Boolean(room.guest),
         guestReady: Boolean(room.guest?.ready),
         opponentOnline: Boolean(connected(host ? room.guest : room.host)),
@@ -88,9 +91,9 @@ export function createOnlineServer({ allowedOrigins = [], skipDelay = 550, recon
   function scheduleSkip(room) {
     clearTimeout(room.skipTimer)
     const game = room.game
-    if (!game || game.winner || !bothOnline(room) || activeRole(game) !== KILLER || !game.recovery?.remaining) return
+    if (!game || !bothOnline(room) || !skippingRole(game)) return
     room.skipTimer = setTimeout(() => {
-      if (bothOnline(room) && room.game === game) advance(room, skipKillerTurn(game))
+      if (bothOnline(room) && room.game === game) advance(room, skipTurn(game))
     }, skipDelay)
   }
 
@@ -124,7 +127,7 @@ export function createOnlineServer({ allowedOrigins = [], skipDelay = 550, recon
       do {
         code = Array.from({ length: 6 }, () => ROOM_ALPHABET[randomInt(ROOM_ALPHABET.length)]).join('')
       } while (rooms.has(code))
-      const room = { code, host: seat(socket), guest: null, revision: 0, game: null, expiresAt: null }
+      const room = { code, host: seat(socket), guest: null, skillCount: 0, revision: 0, game: null, expiresAt: null }
       rooms.set(code, room)
       return attach(client, room, room.host)
     }
@@ -151,24 +154,52 @@ export function createOnlineServer({ allowedOrigins = [], skipDelay = 550, recon
 
   function handleLobby(client, request) {
     const { room, player, socket } = client
-    if (request.type === 'chooseRole' && player === room.host && [HUMAN, KILLER].includes(request.role)) {
-      if (room.host.role !== request.role) {
-        room.host.role = request.role
-        if (room.guest) {
-          room.guest.role = opposite(request.role)
-          room.guest.ready = false
-        }
+    if (request.type === 'chooseSkillCount' && player === room.host && SKILL_MODES.some(([count]) => count === request.count)) {
+      if (room.skillCount !== request.count) {
+        room.skillCount = request.count
+        resetSelections(room)
       }
       return publish(room)
     }
+    if (request.type === 'chooseRole' && player === room.host && [HUMAN, KILLER].includes(request.role)) {
+      if (room.host.role !== request.role) {
+        room.host.role = request.role
+        if (room.guest) room.guest.role = opposite(request.role)
+        resetSelections(room)
+      }
+      return publish(room)
+    }
+    if (request.type === 'toggleSkill' && player.role && request.role === player.role &&
+        request.skillCount === room.skillCount && typeof request.selected === 'boolean' && typeof request.id === 'string') {
+      const skills = player.skills.filter(id => id !== request.id)
+      if (request.selected) skills.push(request.id)
+      if (!validSkillSelection(player.role, room.skillCount, skills)) return warn(socket, '技能不属于当前角色或超出选择数量。')
+      player.skills = skills
+      player.ready = false
+      return publish(room)
+    }
     if (request.type === 'ready' && player === room.guest && player.role && request.role === player.role && typeof request.ready === 'boolean') {
+      if (request.ready && ((room.skillCount && request.skillCount !== room.skillCount) ||
+          !validLoadout(player.role, room.skillCount, player.skills))) return warn(socket, '请先选满本局技能。')
       player.ready = request.ready
       return publish(room)
     }
     if (request.type === 'start' && player === room.host && room.host.role && room.guest?.ready && bothOnline(room)) {
-      return advance(room, createGame(null))
+      const members = [room.host, room.guest]
+      if (!members.every(member => validLoadout(member.role, room.skillCount, member.skills))) {
+        return warn(socket, '双方都选满技能后才能开始。')
+      }
+      return advance(room, createGame(null, undefined, 'normal', Object.fromEntries(members.map(member => [member.role, member.skills]))))
     }
     return warn(socket, '房主先选角色，来宾准备后才能开始。')
+  }
+
+  function resetSelections(room) {
+    room.host.skills = []
+    if (room.guest) {
+      room.guest.skills = []
+      room.guest.ready = false
+    }
   }
 
   function handleMessage(client, request) {
@@ -190,6 +221,10 @@ export function createOnlineServer({ allowedOrigins = [], skipDelay = 550, recon
     if (request.type === 'rematch') {
       if (!game.winner || player !== room.host || !bothOnline(room) || request.revision !== room.revision) {
         return warn(socket, '对局结束且双方在线时，房主可以开始下一局。')
+      }
+      if (room.skillCount || request.configure === true) {
+        resetSelections(room)
+        return advance(room, null)
       }
       return advance(room, createGame(null))
     }

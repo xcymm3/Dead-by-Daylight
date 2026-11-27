@@ -1,5 +1,7 @@
 import React, { useState } from 'react'
 import { HUMAN, KILLER, ROLES } from './game.js'
+import { SkillModes, SkillPicker } from './skill-ui.jsx'
+import { SKILL_MODES, validLoadout } from './skills.js'
 
 const unavailableMessage = import.meta.env.DEV
   ? '无法连接联机服务。请在项目目录运行 npm run online:server，页面会自动重试。'
@@ -9,7 +11,10 @@ export function OnlineLobby({ online }) {
   const [code, setCode] = useState('')
   const { room, connection, error, send, leave } = online
   const connected = connection === 'connected' && !online.entering
-  const readyToStart = connected && room?.role && room.guestReady && room.opponentOnline
+  const selected = room?.selectedSkills ?? []
+  const count = room?.skillCount ?? 0
+  const ready = room?.role && validLoadout(room.role, count, selected)
+  const readyToStart = connected && ready && room.guestReady && room.opponentOnline
   const roleName = room?.role && ROLES[room.role]
 
   function join(event) {
@@ -48,17 +53,26 @@ export function OnlineLobby({ online }) {
                     </button>
                   ))}
                 </div>
-                {roleName && room.guestJoined && <p className="online-message">{room.guestReady ? '对手已准备。' : '等待对手确认准备。'}</p>}
-                <button type="button" className="primary wide" disabled={!readyToStart} onClick={() => send({ type: 'start' })}>开始对战</button>
+                <SkillModes count={count} disabled={!connected} onChange={value => send({ type: 'chooseSkillCount', count: value })} />
               </>
             ) : (
               <>
                 <p className="online-message" role="status">{roleName ? `你的角色是${roleName}。` : '等待房主选好角色。'}</p>
-                <button type="button" className="primary wide" disabled={!connected || !roleName}
-                  onClick={() => send({ type: 'ready', role: room.role, ready: !room.guestReady })}>
-                  {room.guestReady ? '取消准备' : '确认准备'}
-                </button>
+                <p className="online-message">技能模式 · {SKILL_MODES.find(([size]) => size === count)?.[1]}</p>
               </>
+            )}
+            <SkillPicker role={room.role} count={count} selected={selected} disabled={!connected || (!room.host && room.guestReady)}
+              onToggle={(id, checked) => send({ type: 'toggleSkill', role: room.role, skillCount: count, id, selected: checked })} />
+            {room.host ? (
+              <>
+                {roleName && room.guestJoined && <p className="online-message">{room.guestReady ? '对手已准备。' : '等待对手确认准备。'}</p>}
+                <button type="button" className="primary wide" disabled={!readyToStart} onClick={() => send({ type: 'start' })}>开始对战</button>
+              </>
+            ) : (
+              <button type="button" className="primary wide" disabled={!connected || !ready}
+                onClick={() => send({ type: 'ready', role: room.role, skillCount: count, ready: !room.guestReady })}>
+                {room.guestReady ? '取消准备' : '确认准备'}
+              </button>
             )}
             <button type="button" className="secondary wide" onClick={leave}>退出房间</button>
           </>

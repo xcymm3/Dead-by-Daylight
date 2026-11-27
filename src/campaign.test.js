@@ -62,6 +62,17 @@ test('AI planning caches, hidden positions and second-step patrols respect the s
   }
 })
 
+test('campaign skill mode uses the selected stage and the solo skill pool', () => {
+  const game = createCampaignGame(10, 17, ['escape', 'focus', 'blink'])
+  assert.equal(game.skills.human.blink, 1)
+  assert.equal(Object.keys(game.skills.killer).length, 3)
+  assert.equal(project(game, HUMAN).campaignLevel, 10)
+  assert.throws(() => createCampaignGame(10, 17, ['healing', 'tracking']), RangeError)
+  const decision = chooseMatchOpponentAction(game)
+  assert.ok(CAMPAIGN[9].board.spawns.includes(decision.to))
+  assert.notEqual(applyMatchAction(game, decision), game)
+})
+
 test('only consecutive human victories unlock stages and replays keep their map', () => {
   const values = new Map()
   const storage = { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value) }

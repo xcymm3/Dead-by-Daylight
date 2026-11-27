@@ -350,7 +350,7 @@ export function CharacterArt({ role, at, columns, health, replayRound }) {
     const dy = Math.floor(at / columns) - Math.floor(before.at / columns)
     if (dx) setFacing(Math.sign(dx))
     const forward = replayRound === null || (before.replayRound !== null && replayRound > before.replayRound)
-    const hit = forward && health < before.health
+    const hit = forward && Number.isInteger(health) && Number.isInteger(before.health) && health < before.health
     const distance = Math.abs(dx) + Math.abs(dy)
     if (hit || distance) {
       const name = hit ? (killer ? 'attack' : 'hurt') : distance > 1 && replayRound === null ? 'vault' : 'walk'

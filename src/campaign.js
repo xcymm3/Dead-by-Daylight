@@ -1,13 +1,14 @@
-import { HUMAN, createGame } from './game.js'
+import { HUMAN } from './game.js'
 import { CAMPAIGN } from './maps.js'
+import { createPracticeGame } from './opponent.js'
 
 const PROGRESS_KEY = 'grid-operations:campaign-cleared-v1'
 
-export function createCampaignGame(level, seed) {
+export function createCampaignGame(level, seed, skills = []) {
   const stage = CAMPAIGN[level - 1]
   if (!Number.isInteger(level) || !stage) throw new RangeError('无效的战役关卡')
   const difficulty = stage.tracking ? 'hard' : 'normal'
-  return { ...createGame(HUMAN, seed, difficulty), campaignLevel: level }
+  return { ...createPracticeGame(HUMAN, skills.length, skills, difficulty, seed), campaignLevel: level }
 }
 
 export function loadCampaignProgress(storage) {
