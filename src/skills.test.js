@@ -5,7 +5,7 @@ import {
   stunRemaining, visibleLog,
 } from './game.js'
 import { applyMatchAction, chooseMatchOpponentAction } from './hard-opponent.js'
-import { createPracticeGame } from './opponent.js'
+import { createPracticeGame, killerThreat } from './opponent.js'
 import { skillIds, validLoadout } from './skills.js'
 
 function position(killer, human, turn, loadouts, options = {}) {
@@ -305,15 +305,54 @@ test('AI selects whitelisted skills and plays games in both roles across all dif
 })
 
 test('AI plays blink and stealth tactically and reacts only to the watcher signal', () => {
-  const escape = position(29, 5, HUMAN, { human: ['blink'] }, { repaired: [5, 9, 25] })
+  const escape = position(29, 5, HUMAN, { human: ['blink'] }, { difficulty: 'hard', repaired: [5, 9, 25] })
   assert.deepEqual(chooseMatchOpponentAction(escape), { kind: 'blink', direction: 'south', to: 15, land: 15 })
-  const nearThirdLamp = position(26, 25, HUMAN, { human: ['stealth'] }, { repaired: [5, 9] })
+  const nearThirdLamp = position(26, 25, HUMAN, { human: ['stealth'] }, { difficulty: 'hard', repaired: [5, 9] })
   assert.equal(chooseMatchOpponentAction(nearThirdLamp)?.kind, 'stealth')
-  const unplaced = position(6, 25, KILLER, { killer: ['watch'] })
+  const unplaced = position(6, 25, KILLER, { killer: ['watch'] }, { difficulty: 'hard' })
   assert.equal(chooseMatchOpponentAction(unplaced)?.kind, 'watch')
   const watcher = { at: 6, start: 1 }
   const watch = position(15, 6, KILLER, { killer: ['watch'] }, { watcher })
   const replaceHuman = at => ({ ...watch, positions: { killer: 15, human: at } })
   assert.deepEqual(chooseMatchOpponentAction(watch), chooseMatchOpponentAction(replaceHuman(10)))
   assert.notDeepEqual(chooseMatchOpponentAction(watch), chooseMatchOpponentAction(replaceHuman(25)))
+})
+
+test('hard killer uses blink to gain position while preserving its move budget', () => {
+  const game = position(10, 29, KILLER, { killer: ['snipe', 'lockdown', 'blink'] },
+    { difficulty: 'hard', seed: 0, round: 2, snipe: 2, visits: { 5: 1, 6: 1, 10: 1 } })
+  const choice = chooseMatchOpponentAction(game)
+  assert.deepEqual(choice, { kind: 'blink', direction: 'south', to: 20, land: 20 })
+  const next = applyMatchAction(game, choice)
+  assert.equal(next.positions[KILLER], 20)
+  assert.equal(next.steps, game.steps)
+  assert.equal(next.skills.killer.blink, 0)
+})
+
+test('hard killer responds to a pending sniper shot but cannot use information concealed by stealth', () => {
+  const game = position(21, 28, KILLER, { human: ['stealth'], killer: ['snipe', 'lockdown', 'watch'] }, {
+    difficulty: 'hard', seed: 16, round: 4, steps: 1, killerMoved: true, repaired: [25], snipe: 4,
+    visits: { 20: 1, 21: 1, 25: 1, 26: 1, 27: 1, 28: 1 }, watcher: { at: 28, start: 2 },
+  })
+  assert.equal(chooseMatchOpponentAction(game).to, 26)
+  assert.equal(chooseMatchOpponentAction({ ...game, snipe: 0 }).to, 16)
+  const hidden = { ...game, stealthUntil: 6, skills: { ...game.skills, human: { stealth: 0 } } }
+  const alternative = { ...hidden, health: 1, repaired: [5, 9, 29], snipe: 0, positions: { killer: 21, human: 29 } }
+  assert.deepEqual(project(hidden, KILLER), project(alternative, KILLER))
+  assert.deepEqual(chooseMatchOpponentAction(hidden), chooseMatchOpponentAction(alternative))
+})
+
+test('hard human plans around the remaining stun and the combination of lockdown and frenzy', () => {
+  const game = position(7, 5, HUMAN, { human: ['strong', 'escape'], killer: ['lockdown'] }, {
+    difficulty: 'hard', seed: 0, round: 11, steps: 0, health: 1, repaired: [29, 5],
+    pallets: { 7: 'dropped' }, recovery: { kind: 'stun', remaining: 2 },
+  })
+  const withoutStrong = { ...game, skills: { ...game.skills, human: { escape: null } }, recovery: { kind: 'stun', remaining: 0 } }
+  assert.equal(chooseMatchOpponentAction(game).to, 6)
+  assert.equal(chooseMatchOpponentAction(withoutStrong).to, 10)
+
+  for (const killer of [['frenzy'], ['lockdown'], ['lockdown', 'frenzy']]) {
+    const view = project(position(6, 8, HUMAN, { killer }, { repaired: [5, 9, 25], pallets: { 7: 'dropped' } }), HUMAN)
+    assert.equal(killerThreat(view).has(8), killer.length === 2)
+  }
 })

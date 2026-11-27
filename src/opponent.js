@@ -13,13 +13,13 @@ export function createPracticeGame(player, count, selected, difficulty, seed = M
   return createGame(player, seed, difficulty, { [player]: selected, [opponent]: ordered.slice(0, count).map(({ id }) => id) })
 }
 
-function routes(view, role, start) {
+function routes(view, role, start, groundOnly = false) {
   const distance = new Map([[start, 0]])
   const queue = [start]
   for (const from of queue) {
     for (const to of adjacent(from)) {
       const action = movement(view, role, from, to)
-      if (!action || distance.has(action.land)) continue
+      if (!action || (groundOnly && action.kind !== 'move') || distance.has(action.land)) continue
       distance.set(action.land, distance.get(from) + 1)
       queue.push(action.land)
     }
@@ -38,23 +38,30 @@ export function killerThreat(view) {
   let frontier = [{ at: killer, blink: !sideStep, forced: Boolean(sideStep) }]
   const threatened = new Set()
   const budget = view.rage ? 3 : 2
+  const quickBreak = hasSkill(view, KILLER, 'lockdown')
+  const terrainAfterBreak = entry => entry.cleared === undefined ? view
+    : { ...view, pallets: { ...view.pallets, [entry.cleared]: 'broken' } }
   for (let step = 0; step < budget; step++) {
     const flashed = frontier.flatMap(entry => {
       if (!entry.blink) return []
-      const fromView = { ...view, positions: { [KILLER]: entry.at } }
+      const fromView = { ...terrainAfterBreak(entry), positions: { [KILLER]: entry.at } }
       return blinkOptions(fromView, KILLER).map(({ land }) => {
         threatened.add(land)
-        return { at: land, blink: false, forced: false }
+        return { ...entry, at: land, blink: false }
       })
     })
     const next = new Map()
+    const add = entry => next.set(`${entry.at}:${entry.blink}:${entry.cleared}`, entry)
     for (const entry of [...frontier, ...flashed]) {
-      const moves = entry.forced ? [entry.at - 1, entry.at + 1]
-        : adjacent(entry.at).filter(to => movement(view, KILLER, entry.at, to)?.kind === 'move')
-      for (const at of moves) {
-        threatened.add(at)
-        const blink = entry.blink || entry.forced
-        next.set(`${at}:${blink}`, { at, blink, forced: false })
+      const state = terrainAfterBreak(entry)
+      const moves = entry.forced ? [entry.at - 1, entry.at + 1].map(land => ({ kind: 'move', land }))
+        : adjacent(entry.at).map(to => movement(state, KILLER, entry.at, to)).filter(Boolean)
+      for (const action of moves) {
+        if (action.kind === 'break' && quickBreak) add({ ...entry, cleared: action.to })
+        if (action.kind === 'move') {
+          threatened.add(action.land)
+          add({ ...entry, at: action.land, blink: entry.blink || entry.forced, forced: false })
+        }
       }
     }
     frontier = [...next.values()]
@@ -67,30 +74,40 @@ function scoreHuman(view, action, pressure = 1) {
   const from = view.positions[HUMAN]
   const next = action.land ?? from
   const repaired = action.kind === 'repair' ? [...view.repaired, from] : view.repaired
+  const strong = hasSkill(view, HUMAN, 'strong')
+  const palletStun = action.kind === 'drop' && action.to === view.positions[KILLER] ? (strong ? 5 : STUN_TURNS) : 0
   const planningView = {
     ...view,
     count: repaired.length,
     rage: repaired.length >= 3 && hasSkill(view, KILLER, 'frenzy'),
     pallets: action.kind === 'drop' ? { ...view.pallets, [action.to]: 'dropped' } : view.pallets,
-    recovery: action.kind === 'drop' && action.to === view.positions[KILLER]
-      ? { kind: 'stun', remaining: hasSkill(view, HUMAN, 'strong') ? 5 : STUN_TURNS } : view.recovery,
+    recovery: palletStun ? { kind: 'stun', remaining: palletStun } : view.recovery,
   }
   const goals = planningView.count >= 3 ? EXITS : boardFor(view.campaignLevel).machines.filter(at => !repaired.includes(at))
   const distance = routes(planningView, HUMAN, next)
   const progress = Math.min(...goals.map(at => distance.get(at) ?? 22))
   const protectedRepair = action.kind === 'repair' && hasSkill(view, HUMAN, 'focus')
-  const healsOnRepair = repaired.length === 3 && view.count === 2 && hasSkill(view, HUMAN, 'escape')
-  const danger = !protectedRepair && killerThreat(planningView).has(next)
-    ? (view.health === 1 && !healsOnRepair ? 10 : 4) * pressure : 0
-  const gain = { repair: 9, drop: planningView.recovery !== view.recovery ? 5 : -1, wait: -1.5 }
-  return -progress - danger + (gain[action.kind] ?? 0)
+  const healsOnRepair = view.health === 1 && repaired.length === 3 && view.count === 2 && hasSkill(view, HUMAN, 'escape')
+  // A nonlethal hit costs less when Strong guarantees an extra turn to get away.
+  const hitCost = view.health === 1 && !healsOnRepair ? 10 : strong && !planningView.rage ? 2.75 : 4
+  const danger = !protectedRepair && killerThreat(planningView).has(next) ? hitCost * pressure : 0
+  const recovery = planningView.recovery
+  const freeTurns = view.skills && (recovery?.kind === 'hit' || recovery?.kind === 'stun') ? recovery.remaining : 0
+  const turnToRepair = planningView.count >= 3 ? 0 : 1
+  const reachableInStun = freeTurns > 0
+    ? goals.filter(at => (distance.get(at) ?? Infinity) + turnToRepair <= freeTurns).length : 0
+  const gain = { repair: 9, drop: palletStun ? 5 + (palletStun - STUN_TURNS) * 0.95 : -1, wait: -1.5 }
+  return -progress - danger + (gain[action.kind] ?? 0) + (healsOnRepair ? 6 : 0) + reachableInStun * 0.85
 }
 
 function scoreKiller(view, action, pressure = 1) {
-  if (action.kind === 'wait') return -100
-  const next = action.kind === 'break' ? action.to : action.land
+  const readyToSnipe = view.snipe >= 4
+  const holding = action.kind === 'wait'
+  if (holding && (!readyToSnipe || view.steps !== 1)) return -100
+  const next = action.kind === 'break' ? action.to : action.land ?? view.positions[KILLER]
   const distance = routes(view, KILLER, next)
-  let goals = view.count >= 3 ? EXIT_APPROACHES : boardFor(view.campaignLevel).machines
+  const guardExits = view.count >= 3 || (readyToSnipe && view.count === 2)
+  let goals = guardExits ? EXIT_APPROACHES : boardFor(view.campaignLevel).machines
   const tracked = view.positions[HUMAN]
   if (tracked != null) goals = [tracked]
   else if (view.watcher?.nearby === true) {
@@ -100,9 +117,20 @@ function scoreKiller(view, action, pressure = 1) {
     if (outside.length) goals = outside
   }
   const priority = Math.min(...goals.map(at => (distance.get(at) ?? 10) + (view.visits[at] ?? 0) * 1.3))
-  const delay = { break: hasSkill(view, KILLER, 'lockdown') ? 0.15 : 1.1, vault: 0.9 }
+  const canFinishSoon = view.skills && (view.health === 1 || readyToSnipe)
+  const delay = {
+    break: hasSkill(view, KILLER, 'lockdown') ? 0.15 : readyToSnipe ? 5 : canFinishSoon ? 1.7 : 1.1,
+    vault: readyToSnipe ? 5 : canFinishSoon ? 1.7 : 0.9,
+  }
   const sight = tracked === next && action.kind !== 'break' ? 25 : 0
-  return sight - priority * pressure - (view.visits[next] ?? 0) * 1.6 - (delay[action.kind] ?? 0)
+  // Be able to pressure the wounded human immediately after the automatic shot.
+  let snipeCoverage = 0
+  if (readyToSnipe && action.kind !== 'vault' && action.kind !== 'break') {
+    const direct = routes(view, KILLER, next, true)
+    snipeCoverage = goals.filter(at => direct.get(at) <= 2).length
+    if (holding && !snipeCoverage) return -100
+  }
+  return sight - priority * pressure - (view.visits[next] ?? 0) * 1.6 - (delay[action.kind] ?? 0) + snipeCoverage * 1.8
 }
 
 export function noise(seed, round, steps, to = 0) {

@@ -46,3 +46,5 @@ npm.cmd run online:server
 npm.cmd test
 npm.cmd run build
 ```
+
+`npm.cmd run test:skill-ai` 使用固定种子运行困难 AI 自对战，覆盖人机白名单内所有 2 技能和 3 技能搭配。报告记录主动技能的发动与生效次数，以及在同一局面移除单项技能后发生变化的决策。

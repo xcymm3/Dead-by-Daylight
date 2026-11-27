@@ -8,7 +8,8 @@
     "online:server": "node server/index.js",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test"
+    "test": "node --test",
+    "test:skill-ai": "node tools/skill-self-play.mjs"
   },
   "dependencies": {
     "react": "^19.2.0",
