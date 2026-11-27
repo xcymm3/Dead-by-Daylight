@@ -4,6 +4,7 @@ import {
 } from './game.js'
 import { chooseOpponentAction, noise } from './opponent.js'
 import { hardHuman } from './hard-human.js'
+import { advanceHellHuman, hasHellSight, hellFollowUpAction, sightBelief } from './hell-opponent.js'
 import {
   hiddenKey, killerTravel, palletKey, remainingRoute, threatened, visibleKey,
 } from './hard-planning.js'
@@ -13,15 +14,23 @@ const simulate = (game, action) => action ? play(game, action) : skipKillerTurn(
 const compact = game => ({ ...game, log: [], replay: [], visits: {}, opponentBelief: undefined })
 
 export function applyMatchAction(game, action) {
-  const next = simulate(game, action)
-  if (next === game || next.winner || game.difficulty !== 'hard') return next
+  let next = simulate(game, action)
+  const hell = game.difficulty === 'hell'
+  if (next === game || (!hell && (next.winner || game.difficulty !== 'hard'))) return next
   const role = activeRole(game)
   if (game.player === KILLER) {
-    if (!action || role !== KILLER || isPlacement(game)) return next
-    const observed = { from: game.positions[KILLER], steps: game.steps, gates: game.repaired.length >= 3,
-      kind: action.kind, to: action.to }
-    return { ...next, observedPatrol: [...(game.observedPatrol ?? []).slice(-47), observed] }
+    if (isPlacement(game)) return next
+    if (action && role === KILLER) {
+      const observed = { from: game.positions[KILLER], steps: game.steps, gates: game.repaired.length >= 3,
+        kind: action.kind, to: action.to }
+      next = { ...next, observedPatrol: [...(game.observedPatrol ?? []).slice(-47), observed] }
+    }
+    return hell ? advanceHellHuman(game, action, next) : next
   }
+  if (hell && action && role === KILLER && hasHellSight(game)) {
+    next = { ...next, hellSightRound: game.round }
+  }
+  if (next.winner) return next
   const wanted = visibleKey(next)
   const candidates = new Map()
   let total = 0
@@ -196,11 +205,14 @@ function intercept(game, belief, options) {
 }
 
 export function chooseMatchOpponentAction(game) {
-  if (game.difficulty !== 'hard') return chooseOpponentAction(game)
-  if (activeRole(game) === HUMAN) return hardHuman(game)
+  const hell = game.difficulty === 'hell'
+  if (game.difficulty !== 'hard' && !hell) return chooseOpponentAction(game)
+  if (activeRole(game) === HUMAN) {
+    return hell && game.player === KILLER ? hellFollowUpAction(game) ?? hardHuman(game) : hardHuman(game)
+  }
   const tracking = CAMPAIGN[game.campaignLevel - 1]?.tracking ?? 1
   if (tracking < 1 && noise(game.seed, game.round, 0, 41) >= tracking) return chooseOpponentAction(game)
-  const belief = game.opponentBelief
+  const belief = hasHellSight(game) ? sightBelief(game) : game.opponentBelief
   if (!belief?.length) return chooseOpponentAction(game)
   const options = actionsFor(game)
   if (!options.length) return null
