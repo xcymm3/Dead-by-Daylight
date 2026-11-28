@@ -368,27 +368,13 @@ h1 { font-size: clamp(27px, 3.5vw, 38px); line-height: 1.14; letter-spacing: -.0
 .skill-actions details { border: 1px solid var(--border); border-radius: 5px; }
 .skill-actions summary { cursor: pointer; padding: 10px; color: var(--ink); }
 .skill-directions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; padding: 0 6px 6px; }
-.tile[data-skill-target] { outline: 2px solid var(--accent); outline-offset: -3px; }
-.map-skill-markers {
-  position: absolute;
-  inset-block-end: 2px;
-  inset-inline-start: 3px;
-  display: flex;
-  gap: 2px;
-  font-size: 10px;
-  pointer-events: none;
-  transform: var(--plan-upright, none);
-  z-index: 2;
-}
-.map-skill-markers b, .stun-mark {
+.stun-mark {
   padding: 1px 3px;
   border: 1px solid currentColor;
   border-radius: 3px;
   color: var(--accent);
   background: var(--surface);
 }
-.map-skill-markers [data-signal="clear"] { color: var(--success); background: var(--success-soft); }
-.map-skill-markers [data-signal="near"] { color: var(--killer); background: var(--killer-soft); }
 .stun-mark {
   position: absolute;
   inset-block-start: -4px;

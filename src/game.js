@@ -120,6 +120,8 @@ export function project(game, viewer) {
   }
   if (game.skills) Object.assign(common, {
     skills: game.skills,
+    effects: game.effects?.[viewer] ?? [],
+    teleported: viewer === KILLER ? { [KILLER]: Boolean(game.teleported?.[KILLER]) } : game.teleported,
     blockedWindows: game.blockedWindows ?? [],
     humanStun: game.humanStun ?? 0,
     tracker: game.tracker ?? null,
@@ -267,6 +269,16 @@ export function recentMessages(game, viewer = game.player) {
   return visibleLog(game, viewer).slice(-16)
 }
 
+// Separate sequences keep private effects out of the opponent's payload, including their event IDs.
+function skillEffect(game, skill, stage, { audience = 'public', ...detail }) {
+  const effects = { ...game.effects }
+  for (const viewer of audience === 'public' ? [HUMAN, KILLER] : [audience]) {
+    const recent = effects[viewer] ?? []
+    effects[viewer] = [...recent.slice(-11), { id: (recent.at(-1)?.id ?? 0) + 1, skill, stage, ...detail }]
+  }
+  return { ...game, effects }
+}
+
 function captureRound(game) {
   const { round, positions, health, repaired, pallets, winner, escapedThrough } = game
   const frame = { layout: GATE_LAYOUT, round, positions, health, repaired, count: repaired.length, pallets, winner, escapedThrough,
@@ -285,7 +297,11 @@ function endTurn(game) {
       const { at, direction } = game.flare
       const landed = skillArea(at, direction, 'flare').includes(game.positions[KILLER])
       next = record({ ...next, flare: null }, `人类向${DIRECTIONS[direction]}发射信号枪。`, HUMAN)
-      if (landed) next = record(stun(next, 'flare', 3), '屠夫被信号枪命中，眩晕 3 回合。')
+      next = skillEffect(next, 'flare', 'shot', { at, direction, audience: HUMAN })
+      if (landed) {
+        next = record(stun(next, 'flare', 3), '屠夫被信号枪命中，眩晕 3 回合。')
+        next = skillEffect(next, 'flare', 'impact', { at: game.positions[KILLER] })
+      }
     }
     return next
   }
@@ -295,10 +311,19 @@ function endTurn(game) {
 function startKillerTurn(game) {
   let next = { ...game, turn: KILLER, steps: frenzy(game) ? 3 : 2 }
   if (game.skills) next = { ...next, killerMoved: false, slashed: false }
+  if (frenzy(game) && !game.frenzyStarted) {
+    next = skillEffect({ ...next, frenzyStarted: true }, 'frenzy', 'ignite',
+      { at: game.positions[KILLER], audience: concealed(game, 'count') ? HUMAN : 'public' })
+  } else if (game.frenzyStarted && !frenzy(game)) next = { ...next, frenzyStarted: false }
   if (hasSkill(game, KILLER, 'snipe') && game.health === 2) {
     const snipe = (game.snipe ?? 0) + 1
     next = { ...next, snipe }
-    if (snipe === 5) next = record(wound(next), '狙杀生效，人类失去 1 点生命。', concealed(next, 'health') ? HUMAN : 'public', 'action', 'health')
+    if (snipe === 5) {
+      const hidden = concealed(next, 'health')
+      next = record(wound(next), '狙杀生效，人类失去 1 点生命。', hidden ? HUMAN : 'public', 'action', 'health')
+      next = skillEffect(next, 'snipe', 'impact', { at: game.positions[HUMAN], audience: HUMAN })
+      if (!hidden) next = skillEffect(next, 'snipe', 'shot', { at: game.positions[KILLER], audience: KILLER })
+    }
   }
   if (game.tracker && !(game.recovery?.remaining > 0)) {
     next = { ...next, tracker: { ...game.tracker, started: true, steps: 4 } }
@@ -307,11 +332,13 @@ function startKillerTurn(game) {
   return next
 }
 
-function setPosition(game, role, to) {
+function setPosition(game, role, to, teleport = false) {
   const visits = role === KILLER
     ? { ...game.visits, [to]: (game.visits[to] ?? 0) + 1 }
     : game.visits
-  return { ...game, positions: { ...game.positions, [role]: to }, visits }
+  const next = { ...game, positions: { ...game.positions, [role]: to }, visits }
+  if (teleport || game.teleported?.[role]) next.teleported = { ...game.teleported, [role]: teleport }
+  return next
 }
 
 function spend(game, role, id) {
@@ -328,18 +355,25 @@ function wound(game) {
   return { ...game, health: game.health - 1, ...(game.skills && { healing: 0, snipe: 0 }) }
 }
 
-function healthy(game, text) {
-  return record({ ...game, health: 2, healing: 0 }, text, HUMAN)
+function healthy(game, skill, text) {
+  const next = record({ ...game, health: 2, healing: 0 }, text, HUMAN)
+  return skillEffect(next, skill, 'restore', { at: game.positions[HUMAN], audience: HUMAN })
 }
 
 function progressHealing(game, kind) {
   if (game.health !== 1 || !hasSkill(game, HUMAN, 'healing')) return game
   const healing = (game.healing ?? 0) + (kind === 'wait' ? 2 : 1)
-  return healing >= 8 ? healthy(game, '治疗进度达到 8，人类恢复 1 点生命。') : { ...game, healing }
+  return healing >= 8 ? healthy(game, 'healing', '治疗进度达到 8，人类恢复 1 点生命。')
+    : skillEffect({ ...game, healing }, 'healing', 'mend', { at: game.positions[HUMAN], audience: HUMAN })
 }
 
 function protectedFromHit(game) {
   return game.focusRound === game.round || game.hitRound === game.round
+}
+
+function focusBlock(game) {
+  return game.focusRound === game.round
+    ? skillEffect(game, 'focus', 'block', { at: game.positions[HUMAN], audience: HUMAN }) : game
 }
 
 function hit(game, canContinue) {
@@ -347,6 +381,11 @@ function hit(game, canContinue) {
   const rage = frenzy(game)
   const remaining = 2 + Number(hasSkill(game, HUMAN, 'strong'))
   let next = rage ? { ...damaged, hitRound: game.round } : stun(damaged, 'hit', remaining)
+  if (rage) {
+    next = skillEffect(next, 'frenzy', 'strike', { at: game.positions[KILLER], audience: concealed(game, 'count') ? HUMAN : 'public' })
+  } else if (remaining > 2) {
+    next = skillEffect(next, 'strong', 'impact', { at: game.positions[KILLER] })
+  }
   if (concealed(game, 'health')) next = record(next, '屠夫命中人类。')
   next = record(next, `屠夫命中，人类剩余 ${next.health} 点生命。`, concealed(game, 'health') ? HUMAN : 'public', 'action', 'health')
   if (next.health === 0) return captureRound(record({ ...next, winner: KILLER, steps: 0 }, '屠夫获胜。'))
@@ -354,9 +393,10 @@ function hit(game, canContinue) {
 }
 
 function trackerContact(game) {
-  if (game.focusRound === game.round) return game
-  return record({ ...game, tracker: null, humanStun: 2, revealUntil: game.round + 2 },
+  if (game.focusRound === game.round) return focusBlock(game)
+  const next = record({ ...game, tracker: null, humanStun: 2, revealUntil: game.round + 2 },
     '跟踪者接触人类，人类跳过 2 回合并暴露位置。')
+  return skillEffect(next, 'track', 'lock', { at: game.positions[HUMAN] })
 }
 
 export function skippingRole(game) {
@@ -382,7 +422,10 @@ export function skipKillerTurn(game) {
   if (recovery.remaining === 0 && recovery.kind !== 'stun' && !recovery.sidestep) {
     next = { ...next, recovery: null }
     if (recovery.kind === 'vault') {
-      if (recovery.window !== undefined) next = { ...next, blockedWindows: [...(next.blockedWindows ?? []), recovery.window] }
+      if (recovery.window !== undefined) {
+        next = skillEffect({ ...next, blockedWindows: [...(next.blockedWindows ?? []), recovery.window] },
+          'lockdown', 'seal', { at: recovery.window })
+      }
       next = record(next, `屠夫翻窗抵达 ${coordinate(recovery.to)}。`, KILLER)
       return killerLand(next, recovery.to, false)
     }
@@ -411,22 +454,35 @@ export function play(game, request) {
 
 function playHuman(game, { kind, to, land, direction }) {
   game = progressHealing(game, kind)
-  if (kind === 'trap') return record({ ...spend(game, HUMAN, kind), trap: { at: game.positions[HUMAN] } }, '人类在原地布置陷阱。', HUMAN)
-  if (kind === 'stealth') return record({ ...spend(game, HUMAN, kind), stealthUntil: game.round + 3 }, '人类发动隐秘，效果持续 3 轮。', HUMAN)
-  if (kind === 'flare') {
-    const next = { ...spend(game, HUMAN, kind), flare: { at: game.positions[HUMAN], direction } }
-    return endTurn(record(next, `人类举起信号枪，瞄向${DIRECTIONS[direction]}。`, HUMAN))
+  if (kind === 'trap') {
+    const at = game.positions[HUMAN]
+    const next = record({ ...spend(game, HUMAN, kind), trap: { at } }, '人类在原地布置陷阱。', HUMAN)
+    return skillEffect(next, 'trap', 'place', { at, audience: HUMAN })
   }
-  if (kind === 'blink') return record(setPosition(spend(game, HUMAN, kind), HUMAN, to), `人类闪现至 ${coordinate(to)}。`, HUMAN)
+  if (kind === 'stealth') {
+    const next = record({ ...spend(game, HUMAN, kind), stealthUntil: game.round + 3 }, '人类发动隐秘，效果持续 3 轮。', HUMAN)
+    return skillEffect(next, 'stealth', 'veil', { at: game.positions[HUMAN], audience: HUMAN })
+  }
+  if (kind === 'flare') {
+    const at = game.positions[HUMAN]
+    const next = record({ ...spend(game, HUMAN, kind), flare: { at, direction } }, `人类举起信号枪，瞄向${DIRECTIONS[direction]}。`, HUMAN)
+    return endTurn(skillEffect(next, 'flare', 'aim', { at, direction, audience: HUMAN }))
+  }
+  if (kind === 'blink') {
+    const next = record(setPosition(spend(game, HUMAN, kind), HUMAN, to, true), `人类闪现至 ${coordinate(to)}。`, HUMAN)
+    return skillEffect(next, 'blink', 'travel', { at: game.positions[HUMAN], to, role: HUMAN, audience: HUMAN })
+  }
   if (kind === 'repair') {
     const repaired = [...game.repaired, to]
     let next = record({ ...game, repaired }, `人类点亮了 ${coordinate(to)} 的灯。`, HUMAN)
-    if (hasSkill(game, HUMAN, 'focus')) next = { ...next, focusRound: game.round + 1 }
+    if (hasSkill(game, HUMAN, 'focus')) {
+      next = skillEffect({ ...next, focusRound: game.round + 1 }, 'focus', 'guard', { at: to, audience: HUMAN })
+    }
     if (repaired.length === 3) {
       next = record(next, '已点亮 3 盏灯，两扇出口门开启。', concealed(game, 'count') ? HUMAN : 'public', 'action', 'count')
       if (hasSkill(game, HUMAN, 'escape') && !game.thirdLamp) {
         next = { ...next, thirdLamp: true }
-        if (next.health === 1) next = healthy(next, '逃生生效，人类恢复健康。')
+        if (next.health === 1) next = healthy(next, 'escape', '逃生生效，人类恢复健康。')
       }
     }
     return endTurn(next)
@@ -440,6 +496,7 @@ function playHuman(game, { kind, to, land, direction }) {
         ...stun(next, 'stun', remaining),
         knownPallets: { ...next.knownPallets, [to]: 'dropped' },
       }, `屠夫被木板砸晕，跳过 ${remaining} 个回合。`, KILLER)
+      if (remaining > STUN_TURNS) next = skillEffect(next, 'strong', 'impact', { at: to })
     }
     return endTurn(next)
   }
@@ -467,17 +524,21 @@ function continueKiller(game) {
     ? game : endTurn(game)
 }
 
-function killerLand(game, to, canContinue = true) {
-  let next = setPosition(game, KILLER, to)
+function killerLand(game, to, canContinue = true, teleport = false) {
+  let next = setPosition(game, KILLER, to, teleport)
   if (canUse(next, KILLER, 'sabotage') && next.repaired.includes(to)) {
     next = record({ ...spend(next, KILLER, 'sabotage'), repaired: next.repaired.filter(at => at !== to) },
       `屠夫破坏了 ${coordinate(to)} 的灯。`)
+    next = skillEffect(next, 'sabotage', 'smash', { at: to })
   }
   if (next.trap?.at === to) {
     next = record(stun({ ...next, trap: null }, 'trap', 2), '屠夫踩中陷阱，眩晕 2 回合。')
-    return endTurn(next)
+    return endTurn(skillEffect(next, 'trap', 'snap', { at: to }))
   }
-  if (to === game.positions[HUMAN] && !protectedFromHit(next)) return hit(next, canContinue)
+  if (to === game.positions[HUMAN]) {
+    if (!protectedFromHit(next)) return hit(next, canContinue)
+    next = focusBlock(next)
+  }
   return canContinue ? continueKiller(next) : endTurn(next)
 }
 
@@ -487,7 +548,8 @@ function playKiller(game, { kind, to, land, direction }) {
     const at = game.positions[KILLER]
     const next = { ...spend(game, KILLER, kind), [kind === 'watch' ? 'watcher' : 'tracker']:
       kind === 'watch' ? { at, start: game.round + 1 } : { at, started: false, steps: 0 } }
-    return endTurn(record(next, `屠夫在 ${coordinate(at)} 放置${kind === 'watch' ? '监视者' : '跟踪者'}。`, KILLER))
+    const placed = record(next, `屠夫在 ${coordinate(at)} 放置${kind === 'watch' ? '监视者' : '跟踪者'}。`, KILLER)
+    return endTurn(skillEffect(placed, kind, 'place', { at, audience: kind === 'watch' ? KILLER : 'public' }))
   }
   if (kind === 'trackCancel') return record({ ...game, tracker: null }, '屠夫收回跟踪者。', KILLER)
   if (kind === 'trackWait') return endTurn(game)
@@ -497,22 +559,28 @@ function playKiller(game, { kind, to, land, direction }) {
   }
   if (kind === 'trackMove') {
     const tracker = { ...game.tracker, at: to, steps: game.tracker.steps - 1 }
-    const moved = { ...game, tracker }
+    const moved = skillEffect({ ...game, tracker }, 'track', 'move', { at: game.tracker.at, to })
     const next = to === game.positions[HUMAN] ? trackerContact(moved) : moved
     return !next.tracker || tracker.steps > 0 ? next : endTurn(next)
   }
   if (kind === 'slash') {
-    const next = { ...game, slashed: true }
-    const inRange = skillArea(game.positions[KILLER], direction, kind).includes(game.positions[HUMAN])
-    if (inRange && !protectedFromHit(next)) return hit(next, true)
-    return endTurn(record({ ...next, recovery: { kind: 'slash', remaining: 1 } }, '屠夫挥刀落空，跳过 1 回合。', KILLER))
+    const at = game.positions[KILLER]
+    const inRange = skillArea(at, direction, kind).includes(game.positions[HUMAN])
+    const landed = inRange && !protectedFromHit(game)
+    const next = skillEffect({ ...game, slashed: true }, 'slash', landed ? 'hit' : 'miss', { at, direction })
+    if (landed) return hit(next, true)
+    const missed = inRange ? focusBlock(next) : next
+    return endTurn(record({ ...missed, recovery: { kind: 'slash', remaining: 1 } }, '屠夫挥刀落空，跳过 1 回合。', KILLER))
   }
   if (kind === 'blink') {
-    return killerLand(record(spend(game, KILLER, kind), `屠夫闪现至 ${coordinate(to)}。`, KILLER), to)
+    const next = record(spend(game, KILLER, kind), `屠夫闪现至 ${coordinate(to)}。`, KILLER)
+    const teleported = skillEffect(next, 'blink', 'travel', { at: game.positions[KILLER], to, role: KILLER })
+    return killerLand(teleported, to, true, true)
   }
   if (game.pallets[to] === 'dropped') {
     if (hasSkill(game, KILLER, 'lockdown')) {
-      return continueKiller(breakPallet({ ...game, steps: game.steps - 1 }, to))
+      const next = breakPallet({ ...game, steps: game.steps - 1 }, to)
+      return continueKiller(skillEffect(next, 'lockdown', 'break', { at: to }))
     }
     return endTurn(record({
       ...game,

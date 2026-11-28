@@ -1,0 +1,147 @@
+[data-skill="strong"] { --skill-color: #936125; --skill-light: #ffd28b; }
+[data-skill="healing"] { --skill-color: #20714c; --skill-light: #9feeb6; }
+[data-skill="escape"] { --skill-color: #8d6b19; --skill-light: #ffe39a; }
+[data-skill="focus"] { --skill-color: #156e8b; --skill-light: #8ee1f6; }
+[data-skill="trap"] { --skill-color: #92472a; --skill-light: #f2a178; }
+[data-skill="flare"] { --skill-color: #a03f29; --skill-light: #ffab77; }
+[data-skill="blink"] { --skill-color: #12747e; --skill-light: #8af0e5; }
+[data-skill="blink"][data-role="killer"] { --skill-color: #8f427a; --skill-light: #f0a8dc; }
+[data-skill="stealth"] { --skill-color: #67519c; --skill-light: #c9b7f6; }
+[data-skill="snipe"] { --skill-color: #9f3e32; --skill-light: #ffae9b; }
+[data-skill="lockdown"] { --skill-color: #4c617f; --skill-light: #c2d3f0; }
+[data-skill="frenzy"] { --skill-color: #a6353a; --skill-light: #ff8580; }
+[data-skill="sabotage"] { --skill-color: #924c2a; --skill-light: #ffbd8b; }
+[data-skill="watch"] { --skill-color: #86602b; --skill-light: #efd397; }
+[data-skill="track"] { --skill-color: #2c598e; --skill-light: #a0c6ff; }
+[data-skill="slash"] { --skill-color: #aa3c46; --skill-light: #ffc0b9; }
+
+[data-skill] { --skill-ink: var(--skill-color, var(--accent)); }
+.game-theme [data-skill] { --skill-ink: var(--skill-light, var(--accent)); }
+
+.skill-glyph {
+  width: 1.35em;
+  height: 1.35em;
+  flex: none;
+  vertical-align: -.26em;
+  color: var(--skill-ink);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.55;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.skill-picker .skill-glyph {
+  box-sizing: content-box;
+  padding: .28em;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--plan);
+}
+.skill-summary li { align-items: center; }
+.skill-actions summary .skill-glyph { margin-inline: .2em .5em; }
+.tile[data-skill-target] { outline: 2px solid var(--skill-ink); outline-offset: -3px; }
+
+.skill-prop-slot {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: calc(100% / var(--board-columns));
+  height: calc(100% / var(--board-rows));
+  transform: translate(calc(var(--col) * 100%), calc(var(--row) * 100%));
+  z-index: 3;
+  pointer-events: none;
+}
+.skill-prop {
+  position: absolute;
+  inset: auto auto 8% 9%;
+  display: grid;
+  place-items: center;
+  width: clamp(14px, 41%, 26px);
+  aspect-ratio: 1;
+  border: 1px solid currentColor;
+  border-radius: 20%;
+  color: var(--skill-ink);
+  background: var(--plan);
+  box-shadow: 0 2px 5px var(--shadow);
+  transform: var(--plan-upright, none);
+}
+.skill-prop .skill-glyph { width: 82%; height: 82%; color: inherit; }
+.skill-prop-slot[data-skill="watch"] .skill-prop { border-radius: 50%; }
+.skill-prop-slot[data-skill="track"] .skill-prop { border-radius: 46% 46% 26% 26%; }
+.skill-prop-slot[data-skill="lockdown"] .skill-prop { inset: 50% auto auto 50%; translate: -50% -50%; }
+.skill-prop-slot[data-skill="flare"] .skill-prop { inset: 8% 8% auto auto; }
+.skill-prop-slot[data-state="pending"] .skill-prop { border-style: dashed; }
+.skill-prop-slot[data-state="clear"] .skill-prop { color: var(--success); background: var(--success-soft); }
+.skill-prop-slot[data-state="near"] .skill-prop { color: var(--killer); background: var(--killer-soft); }
+.skill-aim, .skill-seal {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: var(--skill-ink);
+  stroke-width: 3.5;
+  stroke-linejoin: round;
+}
+.skill-seal { stroke-width: 4; stroke-dasharray: 7 3; opacity: .88; }
+
+.piece-position[data-teleported] { transition: none; }
+.skill-aura, .skill-board-fx {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.skill-aura { z-index: -1; overflow: visible; }
+.skill-board-fx { z-index: 5; }
+.skill-aura [data-skill], .fx-event { color: var(--skill-ink); }
+.fx-line, .fx-fine, .fx-sparks, .fx-crest, .fx-trail {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.fx-line { stroke-width: 3.5; }
+.fx-fine { stroke-width: 2; opacity: .75; }
+.fx-wash { fill: currentColor; fill-opacity: .20; }
+.fx-blade { fill: currentColor; fill-opacity: .36; }
+.fx-area { fill: currentColor; fill-opacity: .22; stroke: currentColor; stroke-width: 1.5; stroke-opacity: .68; }
+.fx-crest { stroke-width: 1.5; overflow: visible; }
+.fx-sparks { stroke-width: 3.2; }
+.fx-fragments { fill: currentColor; fill-opacity: .75; }
+.fx-trail { stroke-width: 4; stroke-dasharray: 15 8 6 8 25 8; opacity: .75; }
+.fx-muted, [data-stage="miss"] .fx-area { opacity: .6; }
+.fx-event[data-stage="miss"] .fx-blade { fill-opacity: .18; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .fx-event { animation: fx-clear 880ms both; }
+  .fx-ring { animation: fx-ripple 700ms var(--ease-out) both; }
+  .fx-mark { animation: fx-pop 460ms var(--ease-out) both; }
+  .fx-portal { animation: fx-depart 640ms var(--ease-out) both; }
+  .fx-arrival { animation-name: fx-ripple; }
+  .fx-trail { animation: fx-depart 560ms ease-out both; }
+  .fx-beam { animation: fx-beam 600ms var(--ease-out) both; }
+  .fx-sweep { animation: fx-sweep 550ms var(--ease-out) both; }
+  .fx-lift { animation: fx-lift 780ms var(--ease-out) both; }
+  .fx-mist { animation: fx-mist 800ms var(--ease-out) both; }
+  .fx-sparks { animation: fx-ripple 650ms var(--ease-out) both; }
+  .fx-lock { animation: fx-lock 620ms var(--ease-out) both; }
+  .fx-fragments { animation: fx-fragments 700ms var(--ease-out) both; }
+  .fx-jaw-top { animation: fx-jaw-top 360ms var(--ease-out) both; }
+  .fx-jaw-bottom { animation: fx-jaw-bottom 360ms var(--ease-out) both; }
+  .skill-prop-slot[data-state="near"] .skill-glyph { animation: fx-signal 540ms var(--ease-out); }
+}
+
+@keyframes fx-clear { 0%, 58% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes fx-ripple { 0% { transform: scale(.48); opacity: .65; } 42% { opacity: 1; } 100% { transform: scale(1.24); opacity: .30; } }
+@keyframes fx-pop { 0% { transform: scale(.67); opacity: 0; } 52% { transform: scale(1.10); opacity: 1; } 100% { transform: none; } }
+@keyframes fx-depart { 0% { opacity: .82; } 100% { opacity: 0; } }
+@keyframes fx-beam { 0% { transform: scaleX(.12); opacity: .55; } 34% { transform: none; opacity: 1; } 100% { opacity: 0; } }
+@keyframes fx-sweep { 0% { transform: rotate(-33deg) scale(.77); opacity: 0; } 46% { opacity: 1; } 100% { transform: rotate(12deg); opacity: .25; } }
+@keyframes fx-lift { 0% { transform: translateY(12px); opacity: .38; } 33% { opacity: 1; } 100% { transform: translateY(-26px); opacity: .4; } }
+@keyframes fx-mist { 0% { transform: scale(.62); opacity: .3; } 40% { opacity: 1; } 100% { transform: scale(1.12); opacity: .45; } }
+@keyframes fx-jaw-top { 0% { transform: translateY(-20px); } 48% { transform: translateY(8px); } 100% { transform: none; } }
+@keyframes fx-jaw-bottom { 0% { transform: translateY(20px); } 48% { transform: translateY(-8px); } 100% { transform: none; } }
+@keyframes fx-signal { 0%, 100% { transform: none; } 38% { transform: scale(1.18); } }
+@keyframes fx-lock { 0% { transform: scale(1.35); opacity: .45; } 40% { transform: scale(.92); opacity: 1; } 100% { transform: none; } }
+@keyframes fx-fragments { 0% { transform: scale(.35); } 100% { transform: translateY(16px) scale(1.32); opacity: .17; } }

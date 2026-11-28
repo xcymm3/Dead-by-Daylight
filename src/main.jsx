@@ -12,11 +12,13 @@ import { loadLastReplay, saveLastReplay } from './replay.js'
 import { boardFor, CAMPAIGN, STANDARD_BOARD } from './maps.js'
 import { completeCampaignLevel, createCampaignGame, loadCampaignProgress } from './campaign.js'
 import { CharacterArt, GateArt, PerimeterArt, TerrainArt, WallRunArt } from './game-art.jsx'
+import { SkillAura, SkillEffectsLayer, SkillProps } from './skill-art.jsx'
 import { SkillActions, SkillModes, SkillPicker, SkillSummary } from './skill-ui.jsx'
 import { validLoadout } from './skills.js'
 import './tokens.css'
 import './styles.css'
 import './game-theme.css'
+import './skill-art.css'
 
 const TILE_NAMES = { empty: '空格', machine: '灯', window: '窗户', wall: '墙', pallet: '木板', exit: '地窖' }
 const LEGACY_NAMES = { machine: '机器', exit: '出口' }
@@ -92,6 +94,7 @@ function Board({ view, actions, onAction, gameStyle, replayRound, layout, previe
   const humanDazed = view?.humanStun > 0
   const tracked = view?.tracker
   const watcher = view?.watcher
+  const sniperEffect = view?.effects?.findLast(effect => effect.skill === 'snipe')?.id
   const watcherLabel = watcher?.nearby === null ? '监视者待启用' : watcher?.nearby ? '监视者附近有人' : '监视者附近无人'
   return (
     <section className="panel map-panel" aria-labelledby="map-title">
@@ -121,21 +124,17 @@ function Board({ view, actions, onAction, gameStyle, replayRound, layout, previe
               const name = type === 'exit' ? coordinate(at, layout) : `${coordinate(at)} ${tileName(type)}`
               const status = { repaired: legacy ? '已修好' : '已点亮', dropped: '已放下', broken: '已砸碎', sealed: '已封锁' }[condition]
                 ?? (type === 'pallet' ? '靠墙，可通行' : type === 'machine' ? (view && !view.repaired ? '亮灯位置隐藏' : '未点亮') : null)
-              const markers = [
-                sealed && { text: '封' },
-                view?.trap?.at === at && { text: '陷', label: '陷阱' },
-                tracked?.at === at && { text: '踪', label: '跟踪者' },
-                watcher?.at === at && { text: watcher.nearby === null ? '监' : watcher.nearby ? '有' : '无', label: watcherLabel,
-                  signal: watcher.nearby === null ? 'pending' : watcher.nearby ? 'near' : 'clear' },
-              ].filter(Boolean)
               const label = [name, status, type === 'exit' && (view?.count === null ? '状态隐藏' : open ? '已开放' : '未开放'),
                 ...piece.map(role => ROLES[role] + ((role === KILLER ? killerDazed : humanDazed) ? '眩晕中' : '')),
-                ...markers.map(marker => marker.label),
+                view?.trap?.at === at && '陷阱', tracked?.at === at && '跟踪者', watcher?.at === at && watcherLabel,
+                view?.flare?.at === at && '信号枪瞄准中',
                 action && actionLabel(action, undefined, level)].filter(Boolean).join('，')
               return (
                 <React.Fragment key={slot}>
                   <button type="button" className={`tile tile-${type} ${condition} ${open ? 'open' : ''}`}
                     data-skill-target={highlighted.has(at) || undefined}
+                    data-skill={highlighted.has(at) ? preview.kind : undefined}
+                    data-role={highlighted.has(at) ? view.turn : undefined}
                     aria-label={label} title={label}
                     aria-disabled={!action} tabIndex={action ? 0 : -1}
                     onClick={() => action && onAction(action)}>
@@ -145,9 +144,6 @@ function Board({ view, actions, onAction, gameStyle, replayRound, layout, previe
                     {type === 'exit' && <span className="exit-name">{name}</span>}
                     {action && !badge && <span className="target-mark" aria-hidden="true" />}
                     {condition === 'repaired' && <span className="tile-check" aria-hidden="true">✓</span>}
-                    {markers.length > 0 && <span className="map-skill-markers" aria-hidden="true">
-                      {markers.map(marker => <b key={marker.text} data-signal={marker.signal}>{marker.text}</b>)}
-                    </span>}
                   </button>
                   {badge && <span className="tile-action-label" aria-hidden="true"
                     style={{ gridColumnStart: slot % columnCount + 1, gridRowStart: Math.floor(slot / columnCount) + 1 }}>
@@ -158,22 +154,28 @@ function Board({ view, actions, onAction, gameStyle, replayRound, layout, previe
             })}
             {gameStyle && !legacy && <PerimeterArt />}
             {gameStyle && classic && <WallRunArt pallets={view?.pallets} legacy={legacy} />}
+            <SkillProps view={view} cells={cells} columns={columnCount} />
             {[KILLER, HUMAN].map(role => {
               const at = view?.positions[role]
               if (at == null) return null
               const shared = view.positions[HUMAN] === view.positions[KILLER]
               const slot = cells.indexOf(at)
               const dazed = role === KILLER ? killerDazed : humanDazed
+              const teleported = view.teleported?.[role]
               return (
                 <div key={role} className={`piece-position ${shared ? `shared-${role}` : ''}`} data-dazed={dazed || undefined}
+                  data-teleported={teleported || undefined}
                   style={{ '--col': slot % columnCount, '--row': Math.floor(slot / columnCount) }} aria-hidden="true">
-                  {gameStyle ? <CharacterArt role={role} at={slot} columns={columnCount} health={view.health} replayRound={replayRound} />
+                  <SkillAura view={view} role={role} />
+                  {gameStyle ? <CharacterArt role={role} at={slot} columns={columnCount} health={view.health}
+                    replayRound={replayRound} teleported={teleported} sniperEffect={sniperEffect} />
                     : <span className={`piece ${role}`}>{role === HUMAN ? '人' : '屠'}</span>}
                   {dazed && <span className="stun-mark"><span>✦ ✧</span>眩晕</span>}
                 </div>
               )
             })}
             {gameStyle && !legacy && <PerimeterArt foreground />}
+            {view?.effects && <SkillEffectsLayer events={view.effects} cells={cells} columns={columnCount} />}
             {gated && EXITS.map((exit, index) => {
               const action = actions.find(option => option.to === exit)
               const open = view?.count >= 3

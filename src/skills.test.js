@@ -20,6 +20,7 @@ function action(game, kind, to, direction) {
 
 const wait = game => action(game, 'wait')
 const move = (game, to) => action(game, 'move', to)
+const lastEffect = (game, viewer) => project(game, viewer).effects.at(-1)
 
 test('the skill modes enforce exact, distinct loadouts and the solo whitelist', () => {
   assert.equal(validLoadout(HUMAN, 0, []), true)
@@ -39,6 +40,7 @@ test('strong increases pallet and contact stuns by their stated amounts', () => 
   ]
   for (let [game, turns, kind] of stuns) {
     assert.equal(game.recovery.kind, kind)
+    assert.equal(lastEffect(game, KILLER).skill, 'strong')
     for (let remaining = turns; remaining > 0; remaining--) {
       assert.equal(stunRemaining(project(game, KILLER).recovery), remaining)
       assert.equal(skippingRole(game), KILLER)
@@ -61,12 +63,16 @@ test('healing counts actions and gives two points for waiting on an unlit lamp',
   game = action(wait(game), 'repair', 5)
   assert.equal(game.health, 2)
   assert.equal(game.healing, 0)
+  assert.equal(lastEffect(game, HUMAN).skill, 'healing')
+  assert.equal(lastEffect(game, HUMAN).stage, 'restore')
+  assert.deepEqual(project(game, KILLER).effects, [])
 })
 
 test('escape heals at the third lamp and cannot be farmed if the count falls', () => {
   let game = action(position(29, 25, HUMAN, { human: ['escape'] }, { health: 1, repaired: [5, 9] }), 'repair', 25)
   assert.equal(game.health, 2)
   assert.equal(game.repaired.length, 3)
+  assert.equal(lastEffect(game, HUMAN).skill, 'escape')
   game = action({ ...game, health: 1, repaired: [5, 9], turn: HUMAN }, 'repair', 25)
   assert.equal(game.health, 1)
 })
@@ -79,6 +85,8 @@ test('focus hides protected contact from the killer and expires before the next 
   assert.equal(contact.recovery, null)
   assert.deepEqual(project(contact, KILLER), project(empty, KILLER))
   assert.deepEqual(visibleLog(contact, KILLER), visibleLog(empty, KILLER))
+  assert.equal(lastEffect(contact, HUMAN).stage, 'block')
+  assert.equal(lastEffect(empty, HUMAN).stage, 'guard')
   game = move(contact, 6)
   assert.equal(project(game, HUMAN).focused, false)
   game = move(wait(game), 5)
@@ -89,11 +97,13 @@ test('a trap is private, costs no movement, fires once and expires at the next h
   let game = action(position(6, 11, HUMAN, { human: ['trap'] }), 'trap')
   assert.equal(game.turn, HUMAN)
   assert.equal(project(game, KILLER).trap, undefined)
+  assert.deepEqual(project(game, KILLER).effects, [])
   assert.equal(play(game, { kind: 'trap' }), game)
   game = move(move(game, 10), 11)
   assert.equal(game.recovery.kind, 'trap')
   assert.equal(game.recovery.remaining, 2)
   assert.equal(game.trap, null)
+  assert.deepEqual(lastEffect(game, KILLER), { id: 1, skill: 'trap', stage: 'snap', at: 11 })
   game = skipTurn(wait(game))
   game = action(game, 'trap')
   assert.equal(project(game, KILLER).skills.human.trap, 0)
@@ -117,6 +127,9 @@ test('a directed flare fires at the start of the following human turn', () => {
   assert.equal(game.recovery.kind, 'flare')
   assert.equal(game.recovery.remaining, 3)
   assert.equal(project(game, KILLER).skills.human.flare, 0)
+  assert.deepEqual(project(game, HUMAN).effects.map(({ stage, direction }) => [stage, direction]),
+    [['aim', 'east'], ['shot', 'east'], ['impact', undefined]])
+  assert.deepEqual(project(game, KILLER).effects, [{ id: 1, skill: 'flare', stage: 'impact', at: 13 }])
 })
 
 test('blink crosses obstacles without using movement and rejects occupied or blocked landings', () => {
@@ -126,10 +139,16 @@ test('blink crosses obstacles without using movement and rejects occupied or blo
   assert.equal(game.positions.human, 18)
   assert.equal(game.turn, HUMAN)
   assert.equal(game.steps, 0)
+  assert.deepEqual(lastEffect(game, HUMAN), { id: 1, skill: 'blink', stage: 'travel', at: 16, to: 18, role: HUMAN })
+  assert.equal(project(game, HUMAN).teleported.human, true)
+  assert.deepEqual(project(game, KILLER).effects, [])
   assert.equal(play(game, { kind: 'blink', to: 16, direction: 'west' }), game)
   game = action(wait(game), 'blink', 19, 'north')
   assert.equal(game.positions.killer, 19)
   assert.equal(game.steps, 2)
+  assert.deepEqual(lastEffect(game, KILLER), { id: 1, skill: 'blink', stage: 'travel', at: 29, to: 19, role: KILLER })
+  assert.deepEqual(project(game, KILLER).teleported, { killer: true })
+  assert.strictEqual(project(move(game, 14), KILLER).teleported.killer, false)
   assert.equal(play(position(18, 16, HUMAN, { human: ['blink'] }), { kind: 'blink', to: 18, direction: 'east' }).positions.human, 16)
   const dropped = position(5, 23, KILLER, { killer: ['blink'] }, { pallets: { 7: 'dropped' } })
   const found = action(dropped, 'blink', 7, 'east')
@@ -156,6 +175,8 @@ test('stealth hides metrics, exit hints and numerical logs for exactly three rou
   assert.equal(project(game, KILLER).health, 1)
   assert.equal(project(game, KILLER).skills.human.stealth, 0)
   assert.ok(!visibleLog(game, KILLER).some(event => event.metric))
+  assert.equal(lastEffect(game, HUMAN).skill, 'stealth')
+  assert.deepEqual(project(game, KILLER).effects, [])
 })
 
 test('snipe increments from the first killer turn, fires on five and resets on injury', () => {
@@ -169,6 +190,8 @@ test('snipe increments from the first killer turn, fires on five and resets on i
   assert.equal(game.round, 5)
   assert.equal(game.health, 1)
   assert.equal(game.snipe, 0)
+  assert.deepEqual(lastEffect(game, KILLER), { id: 1, skill: 'snipe', stage: 'shot', at: 6 })
+  assert.deepEqual(lastEffect(game, HUMAN), { id: 1, skill: 'snipe', stage: 'impact', at: 19 })
   assert.equal(wait(wait(game)).snipe, 0)
   const hit = move(position(6, 5, KILLER, { killer: ['snipe'] }, { snipe: 4 }), 5)
   assert.equal(hit.snipe, 0)
@@ -180,6 +203,7 @@ test('lockdown seals the window after landing and removes only the extra pallet-
   game = skipTurn(wait(game))
   assert.equal(game.positions.killer, 18)
   assert.deepEqual(project(game, HUMAN).blockedWindows, [17])
+  assert.deepEqual(lastEffect(game, HUMAN), { id: 1, skill: 'lockdown', stage: 'seal', at: 17 })
   game = move(game, 16)
   assert.equal(play(game, { kind: 'vault', to: 17 }), game)
   game = wait(game)
@@ -189,6 +213,7 @@ test('lockdown seals the window after landing and removes only the extra pallet-
   assert.equal(game.steps, 1)
   assert.equal(game.positions.killer, 6)
   assert.equal(game.recovery, null)
+  assert.equal(lastEffect(game, KILLER).stage, 'break')
   assert.equal(move(game, 7).positions.killer, 7)
 })
 
@@ -196,11 +221,13 @@ test('frenzy adds a step and removes hit stun once three lamps are lit', () => {
   let game = position(6, 25, HUMAN, { human: ['strong'], killer: ['frenzy'] }, { repaired: [5, 9] })
   game = action(game, 'repair', 25)
   assert.equal(game.steps, 3)
+  assert.equal(lastEffect(game, KILLER).stage, 'ignite')
   game = { ...game, positions: { human: 5, killer: 6 } }
   game = move(game, 5)
   assert.equal(game.health, 1)
   assert.equal(game.recovery, null)
   assert.equal(game.steps, 2)
+  assert.equal(lastEffect(game, HUMAN).stage, 'strike')
   game = move(move(game, 6), 5)
   assert.equal(game.health, 1)
   assert.equal(game.turn, HUMAN)
@@ -218,6 +245,7 @@ test('sabotage spends two charges only on lit lamps and always hides repair tota
   assert.equal(project(game, HUMAN).skills.killer.sabotage, 0)
   assert.equal(project(game, KILLER).count, null)
   assert.equal(project(game, HUMAN).count, 2)
+  assert.equal(lastEffect(game, HUMAN).skill, 'sabotage')
 })
 
 test('watch activates next round and reports the center and diagonals without revealing position', () => {
@@ -226,6 +254,8 @@ test('watch activates next round and reports the center and diagonals without re
   game = action(game, 'watch')
   assert.equal(game.turn, HUMAN)
   assert.equal(project(game, KILLER).watcher.nearby, null)
+  assert.deepEqual(lastEffect(game, KILLER), { id: 1, skill: 'watch', stage: 'place', at: 6 })
+  assert.deepEqual(project(game, HUMAN).effects, [])
   for (const at of [6, 10, 11]) {
     const next = wait({ ...game, positions: { human: at, killer: 6 } })
     assert.equal(project(next, KILLER).watcher.nearby, true)
@@ -253,6 +283,7 @@ test('tracking has four steps per round, can be cancelled and reveals a contact 
   for (const to of [7, 8, 9, 14]) game = action(game, 'trackMove', to)
   assert.equal(game.tracker, null)
   assert.equal(game.positions.killer, 6)
+  assert.deepEqual(project(game, KILLER).effects.slice(-2).map(event => event.stage), ['move', 'lock'])
   for (const remaining of [2, 1]) {
     assert.equal(project(game, KILLER).positions.human, 14)
     game = wait(game)
@@ -275,11 +306,23 @@ test('a slash has a three-cell arc and uses the same contact and miss rules afte
   assert.equal(hit.health, 1)
   assert.equal(hit.recovery.kind, 'hit')
   assert.equal(hit.recovery.remaining, 2)
+  assert.deepEqual(lastEffect(hit, KILLER), { id: 1, skill: 'slash', stage: 'hit', at: 8, direction: 'south' })
   const miss = action(moved, 'slash', undefined, 'north')
   assert.equal(miss.health, 2)
   assert.equal(miss.recovery.kind, 'slash')
   assert.equal(miss.recovery.remaining, 1)
+  assert.equal(lastEffect(miss, HUMAN).stage, 'miss')
   assert.equal(skipTurn(wait(miss)).recovery, null)
+})
+
+test('stealth prevents sniper and frenzy effects from publishing concealed information to the killer', () => {
+  const setup = position(26, 25, HUMAN, { human: ['stealth'], killer: ['snipe', 'frenzy'] },
+    { snipe: 4, repaired: [5, 9] })
+  const hidden = action(action(setup, 'stealth'), 'repair', 25)
+  assert.deepEqual(project(hidden, HUMAN).effects.map(event => event.skill), ['stealth', 'frenzy', 'snipe'])
+  assert.deepEqual(project(hidden, KILLER).effects, [])
+  assert.equal(project(hidden, KILLER).health, null)
+  assert.equal(project(hidden, KILLER).count, null)
 })
 
 test('AI selects whitelisted skills and plays games in both roles across all difficulties', () => {

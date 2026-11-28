@@ -336,8 +336,8 @@ export function TerrainArt({ type, condition, open }) {
 
 const MOTION_TIME = { walk: 285, vault: 390, attack: 540, hurt: 525 }
 
-export function CharacterArt({ role, at, columns, health, replayRound }) {
-  const prior = useRef({ at, health, replayRound })
+export function CharacterArt({ role, at, columns, health, replayRound, teleported, sniperEffect }) {
+  const prior = useRef({ at, health, replayRound, sniperEffect })
   const motionSequence = useRef(0)
   const [motion, setMotion] = useState(null)
   const [facing, setFacing] = useState(1)
@@ -345,18 +345,21 @@ export function CharacterArt({ role, at, columns, health, replayRound }) {
 
   useLayoutEffect(() => {
     const before = prior.current
-    prior.current = { at, health, replayRound }
+    prior.current = { at, health, replayRound, sniperEffect }
     const dx = at % columns - before.at % columns
     const dy = Math.floor(at / columns) - Math.floor(before.at / columns)
     if (dx) setFacing(Math.sign(dx))
     const forward = replayRound === null || (before.replayRound !== null && replayRound > before.replayRound)
-    const hit = forward && Number.isInteger(health) && Number.isInteger(before.health) && health < before.health
+    const remoteShot = killer && sniperEffect !== undefined && sniperEffect !== before.sniperEffect
+    const hit = forward && !remoteShot && Number.isInteger(health) && Number.isInteger(before.health) && health < before.health
     const distance = Math.abs(dx) + Math.abs(dy)
-    if (hit || distance) {
+    if (teleported && distance && !hit) {
+      setMotion(null)
+    } else if (hit || distance) {
       const name = hit ? (killer ? 'attack' : 'hurt') : distance > 1 && replayRound === null ? 'vault' : 'walk'
       setMotion({ name, sequence: (motionSequence.current += 1) })
     }
-  }, [at, columns, health, killer, replayRound])
+  }, [at, columns, health, killer, replayRound, teleported, sniperEffect])
 
   useEffect(() => {
     if (!motion) return

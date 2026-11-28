@@ -1,6 +1,7 @@
 import React, { useId } from 'react'
 import { coordinate, HUMAN, KILLER, ROLES } from './game.js'
 import { DIRECTIONS, hasSkill, SKILL_MODES, SKILLS, skillIds } from './skills.js'
+import { SkillGlyph } from './skill-art.jsx'
 
 export function SkillModes({ count, onChange, disabled }) {
   const name = useId()
@@ -31,6 +32,7 @@ export function SkillPicker({ role, count, selected, onToggle, solo = false, dis
           <label key={id}>
             <input type="checkbox" name="skills" value={id} checked={checked} disabled={!checked && selected.length >= count}
               onChange={event => onToggle(id, event.target.checked)} />
+            <SkillGlyph skill={id} role={role} />
             <span>
               <strong>{skill.name}</strong>
               <small>{skill.description}</small>
@@ -53,7 +55,8 @@ export function SkillSummary({ view, player }) {
             {Object.entries(view.skills[role]).map(([id, remaining]) => {
               const skill = SKILLS[role][id]
               const uses = remaining === null ? (skill.uses === Infinity ? '不限次数' : '') : `剩余 ${remaining} 次`
-              return <li key={id} title={skill.description}><strong>{skill.name}</strong>{uses && <small>{uses}</small>}</li>
+              return <li key={id} title={skill.description}><SkillGlyph skill={id} role={role} />
+                <strong>{skill.name}</strong>{uses && <small>{uses}</small>}</li>
             })}
           </ul>
         </section>
@@ -83,11 +86,13 @@ export function SkillActions({ actions, role, onAction, onPreview }) {
       {[...groups].map(([kind, choices]) => {
         const name = SKILLS[role][kind]?.name ?? (kind === 'trackWait' ? '结束本轮跟踪' : '收回跟踪者')
         if (!choices[0].direction) {
-          return <button type="button" className="secondary" key={kind} onClick={() => onAction(choices[0])}>{name}</button>
+          return <button type="button" className="secondary" key={kind} onClick={() => onAction(choices[0])}>
+            <SkillGlyph skill={SKILLS[role][kind] ? kind : 'track'} role={role} />{name}
+          </button>
         }
         return (
           <details key={kind} onToggle={event => { if (!event.currentTarget.open) onPreview(null) }}>
-            <summary>{name} · 选择方向</summary>
+            <summary><SkillGlyph skill={kind} role={role} />{name} · 选择方向</summary>
             <div className="skill-directions">
               {choices.map(action => (
                 <button type="button" className="secondary" key={action.direction}
