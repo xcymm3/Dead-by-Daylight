@@ -1,6 +1,6 @@
 import {
   HUMAN, KILLER, STUN_TURNS, EXITS, EXIT_APPROACHES, activeRole, actionsFor, adjacent,
-  blinkOptions, createGame, isPlacement, movement, nearby, play, project,
+  blinkOptions, createGame, isPlacement, movement, nearby, play, project, stunRemaining,
 } from './game.js'
 import { boardFor, CAMPAIGN } from './maps.js'
 import { hasSkill, skillIds, validLoadout } from './skills.js'
@@ -91,8 +91,7 @@ function scoreHuman(view, action, pressure = 1) {
   // A nonlethal hit costs less when Strong guarantees an extra turn to get away.
   const hitCost = view.health === 1 && !healsOnRepair ? 10 : strong && !planningView.rage ? 2.75 : 4
   const danger = !protectedRepair && killerThreat(planningView).has(next) ? hitCost * pressure : 0
-  const recovery = planningView.recovery
-  const freeTurns = view.skills && (recovery?.kind === 'hit' || recovery?.kind === 'stun') ? recovery.remaining : 0
+  const freeTurns = view.skills ? stunRemaining(planningView.recovery) : 0
   const turnToRepair = planningView.count >= 3 ? 0 : 1
   const reachableInStun = freeTurns > 0
     ? goals.filter(at => (distance.get(at) ?? Infinity) + turnToRepair <= freeTurns).length : 0
@@ -123,7 +122,7 @@ function scoreKiller(view, action, pressure = 1) {
     vault: readyToSnipe ? 5 : canFinishSoon ? 1.7 : 0.9,
   }
   const sight = tracked === next && action.kind !== 'break' ? 25 : 0
-  // Be able to pressure the wounded human immediately after the automatic shot.
+  // Cover routes the human can take while the killer recovers from the shot.
   let snipeCoverage = 0
   if (readyToSnipe && action.kind !== 'vault' && action.kind !== 'break') {
     const direct = routes(view, KILLER, next, true)

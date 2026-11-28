@@ -15,7 +15,7 @@ function actionKey(action) {
 function withoutSkill(game, role, id) {
   const { [id]: removed, ...remaining } = game.skills[role]
   const recovery = game.recovery
-  const extraStun = recovery?.kind === 'hit' ? 1 : recovery?.kind === 'stun' ? 2 : 0
+  const extraStun = ['hit', 'snipe'].includes(recovery?.kind) ? 1 : recovery?.kind === 'stun' ? 2 : 0
   const effects = role === HUMAN ? {
     strong: extraStun ? { recovery: { ...recovery, remaining: Math.max(0, recovery.remaining - extraStun) } } : {},
     stealth: { stealthUntil: 0 },
@@ -23,7 +23,9 @@ function withoutSkill(game, role, id) {
   } : {
     watch: { watcher: null },
     lockdown: { blockedWindows: [] },
-    snipe: { snipe: 0 },
+    snipe: { snipe: 0, ...(recovery?.kind === 'snipe' && {
+      recovery: recovery.deferred ?? (recovery.sidestep ? { kind: 'stun', remaining: 0 } : null),
+    }) },
     frenzy: { steps: Math.min(game.steps, 2) },
   }
   return { ...game, ...effects[id], skills: { ...game.skills, [role]: remaining } }
@@ -61,7 +63,7 @@ function recordEffects(before, after, role, action) {
   }
   if (after.watcher && before.round < after.watcher.start && after.round >= after.watcher.start) stats['killer/watch'].effect++
   if (hasSkill(before, HUMAN, 'strong') && after.recovery !== before.recovery &&
-      ((after.recovery?.kind === 'hit' && after.recovery.remaining === 3) ||
+      ((['hit', 'snipe'].includes(after.recovery?.kind) && after.recovery.remaining === 3) ||
        (after.recovery?.kind === 'stun' && after.recovery.remaining === 5))) stats['human/strong'].effect++
   if (before.health === 1 && after.health === 2) stats['human/escape'].effect++
   if (role === KILLER && before.focusRound === before.round && after.health === before.health &&

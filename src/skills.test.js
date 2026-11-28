@@ -192,9 +192,70 @@ test('snipe increments from the first killer turn, fires on five and resets on i
   assert.equal(game.snipe, 0)
   assert.deepEqual(lastEffect(game, KILLER), { id: 1, skill: 'snipe', stage: 'shot', at: 6 })
   assert.deepEqual(lastEffect(game, HUMAN), { id: 1, skill: 'snipe', stage: 'impact', at: 19 })
-  assert.equal(wait(wait(game)).snipe, 0)
+  for (const remaining of [2, 1]) {
+    assert.deepEqual(project(game, KILLER).recovery, { kind: 'snipe', remaining })
+    assert.deepEqual(actionsFor(game), [])
+    game = wait(skipTurn(game))
+    assert.equal(game.snipe, 0)
+  }
+  assert.equal(game.recovery, null)
+  assert.ok(actionsFor(game).some(option => option.kind === 'move'))
   const hit = move(position(6, 5, KILLER, { killer: ['snipe'] }, { snipe: 4 }), 5)
   assert.equal(hit.snipe, 0)
+})
+
+test('strong extends sniper stun to three turns even with frenzy', () => {
+  let game = position(26, 25, HUMAN, { human: ['strong'], killer: ['snipe', 'frenzy'] }, { snipe: 4, repaired: [5, 9] })
+  game = action(game, 'repair', 25)
+  assert.equal(game.health, 1)
+  assert.equal(lastEffect(game, KILLER).skill, 'strong')
+  for (const remaining of [3, 2, 1]) {
+    assert.equal(skippingRole(game), KILLER)
+    assert.deepEqual(project(game, KILLER).recovery, { kind: 'snipe', remaining })
+    game = wait(skipTurn(game))
+  }
+  assert.equal(skippingRole(game), null)
+  assert.equal(game.steps, 3)
+})
+
+test('sniper stun pauses an in-progress vault or pallet break until the killer recovers', () => {
+  const pending = [
+    action(position(16, 15, KILLER, { killer: ['snipe', 'lockdown'] }, { snipe: 4 }), 'vault', 17),
+    move(position(6, 23, KILLER, { killer: ['snipe'] }, { snipe: 4, pallets: { 7: 'dropped' } }), 7),
+  ]
+  for (const setup of pending) {
+    let game = wait(setup)
+    for (const remaining of [2, 1]) {
+      assert.deepEqual(project(game, KILLER).recovery, { kind: 'snipe', remaining })
+      game = wait(skipTurn(game))
+      assert.deepEqual(game.positions, setup.positions)
+      assert.deepEqual(game.pallets, setup.pallets)
+    }
+    assert.deepEqual(game.recovery, setup.recovery)
+    game = skipTurn(game)
+    if (setup.recovery.kind === 'vault') {
+      assert.equal(game.positions.killer, 18)
+      assert.deepEqual(game.blockedWindows, [17])
+    } else {
+      assert.equal(game.pallets[7], 'broken')
+    }
+  }
+})
+
+test('snipe does not shorten an existing pallet stun', () => {
+  const game = action(position(7, 6, HUMAN, { human: ['strong'], killer: ['snipe'] }, { snipe: 4 }), 'drop', 7)
+  assert.equal(game.health, 1)
+  assert.deepEqual(game.recovery, { kind: 'stun', remaining: 5 })
+})
+
+test('a killer still sidesteps off the pallet when sniper stun replaces its remaining stun', () => {
+  let game = action(position(7, 6, HUMAN, { killer: ['snipe'] }, { snipe: 2 }), 'drop', 7)
+  game = wait(skipTurn(wait(skipTurn(game))))
+  assert.deepEqual(project(game, KILLER).recovery, { kind: 'snipe', remaining: 2, sidestep: true })
+  game = wait(skipTurn(wait(skipTurn(game))))
+  assert.deepEqual(actionsFor(game), [
+    { kind: 'sidestep', to: 6, land: 6 }, { kind: 'sidestep', to: 8, land: 8 },
+  ])
 })
 
 test('lockdown seals the window after landing and removes only the extra pallet-break turn', () => {
@@ -321,8 +382,10 @@ test('stealth prevents sniper and frenzy effects from publishing concealed infor
   const hidden = action(action(setup, 'stealth'), 'repair', 25)
   assert.deepEqual(project(hidden, HUMAN).effects.map(event => event.skill), ['stealth', 'frenzy', 'snipe'])
   assert.deepEqual(project(hidden, KILLER).effects, [])
+  assert.deepEqual(project(hidden, KILLER).recovery, { kind: 'dazed', remaining: 2 })
   assert.equal(project(hidden, KILLER).health, null)
   assert.equal(project(hidden, KILLER).count, null)
+  assert.ok(visibleLog(skipTurn(hidden), KILLER).every(event => !event.text.includes('狙杀')))
 })
 
 test('AI selects whitelisted skills and plays games in both roles across all difficulties', () => {

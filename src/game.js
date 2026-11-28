@@ -14,7 +14,7 @@ export const GATE_LAYOUT = 'courtyard-gates'
 export const DIFFICULTIES = { normal: '普通', hard: '困难', hell: '地狱' }
 export const RECOVERY_LABELS = {
   hit: '命中后眩晕', vault: '翻窗中', break: '砸板中', stun: '木板砸晕',
-  trap: '陷阱眩晕', flare: '信号枪眩晕', slash: '挥刀落空',
+  trap: '陷阱眩晕', flare: '信号枪眩晕', slash: '挥刀落空', snipe: '狙杀后眩晕', dazed: '眩晕',
 }
 export const STUN_TURNS = 3
 export const WINDOW = STANDARD_BOARD.window
@@ -104,7 +104,12 @@ function frenzy(game) {
 }
 
 export function stunRemaining(recovery) {
-  return ['hit', 'stun', 'trap', 'flare'].includes(recovery?.kind) ? recovery.remaining : 0
+  return ['hit', 'stun', 'trap', 'flare', 'snipe', 'dazed'].includes(recovery?.kind) ? recovery.remaining : 0
+}
+
+function visibleRecoveryKind(game, viewer) {
+  const kind = game.recovery?.kind
+  return kind === 'snipe' && viewer === KILLER && concealed(game, 'health') ? 'dazed' : kind
 }
 
 export function project(game, viewer) {
@@ -115,7 +120,11 @@ export function project(game, viewer) {
     steps: game.steps,
     health: game.health,
     count: game.repaired.length,
-    recovery: game.recovery,
+    recovery: game.recovery?.kind === 'snipe' ? {
+      kind: visibleRecoveryKind(game, viewer),
+      remaining: game.recovery.remaining,
+      ...(game.recovery.sidestep && { sidestep: true }),
+    } : game.recovery,
     winner: game.winner,
   }
   if (game.skills) Object.assign(common, {
@@ -320,9 +329,14 @@ function startKillerTurn(game) {
     next = { ...next, snipe }
     if (snipe === 5) {
       const hidden = concealed(next, 'health')
-      next = record(wound(next), '狙杀生效，人类失去 1 点生命。', hidden ? HUMAN : 'public', 'action', 'health')
+      const turns = damageStunTurns(next)
+      next = stun(wound(next), 'snipe', turns)
+      next = record(next, `狙杀生效，人类失去 1 点生命，屠夫还需跳过 ${next.recovery.remaining} 回合。`, hidden ? HUMAN : 'public', 'action', 'health')
       next = skillEffect(next, 'snipe', 'impact', { at: game.positions[HUMAN], audience: HUMAN })
       if (!hidden) next = skillEffect(next, 'snipe', 'shot', { at: game.positions[KILLER], audience: KILLER })
+      if (turns > 2 && next.recovery.kind === 'snipe') {
+        next = skillEffect(next, 'strong', 'impact', { at: game.positions[KILLER], audience: hidden ? HUMAN : 'public' })
+      }
     }
   }
   if (game.tracker && !(game.recovery?.remaining > 0)) {
@@ -348,7 +362,13 @@ function spend(game, role, id) {
 function stun(game, kind, remaining) {
   if (stunRemaining(game.recovery) > remaining) return game
   const sidestep = kind !== 'stun' && (game.recovery?.kind === 'stun' || game.recovery?.sidestep)
-  return { ...game, recovery: { kind, remaining, ...(sidestep && { sidestep: true }) } }
+  const pausedAction = kind === 'snipe' && ['vault', 'break'].includes(game.recovery?.kind) ? game.recovery : null
+  const deferred = kind !== 'stun' && !sidestep && (pausedAction ?? game.recovery?.deferred)
+  return { ...game, recovery: { kind, remaining, ...(sidestep && { sidestep: true }), ...(deferred && { deferred }) } }
+}
+
+function damageStunTurns(game) {
+  return 2 + Number(hasSkill(game, HUMAN, 'strong'))
 }
 
 function wound(game) {
@@ -379,7 +399,7 @@ function focusBlock(game) {
 function hit(game, canContinue) {
   const damaged = wound(game)
   const rage = frenzy(game)
-  const remaining = 2 + Number(hasSkill(game, HUMAN, 'strong'))
+  const remaining = damageStunTurns(game)
   let next = rage ? { ...damaged, hitRound: game.round } : stun(damaged, 'hit', remaining)
   if (rage) {
     next = skillEffect(next, 'frenzy', 'strike', { at: game.positions[KILLER], audience: concealed(game, 'count') ? HUMAN : 'public' })
@@ -416,11 +436,11 @@ export function skipTurn(game) {
 export function skipKillerTurn(game) {
   if (game.winner || game.turn !== KILLER || !game.recovery?.remaining) return game
   const recovery = { ...game.recovery, remaining: game.recovery.remaining - 1 }
-  const reason = RECOVERY_LABELS[recovery.kind]
+  const reason = RECOVERY_LABELS[visibleRecoveryKind(game, KILLER)]
   const summary = `屠夫跳过本回合（${reason}，剩余 ${recovery.remaining} 回合）。`
   let next = record({ ...game, recovery }, summary, KILLER, 'skip')
   if (recovery.remaining === 0 && recovery.kind !== 'stun' && !recovery.sidestep) {
-    next = { ...next, recovery: null }
+    next = { ...next, recovery: recovery.deferred ?? null }
     if (recovery.kind === 'vault') {
       if (recovery.window !== undefined) {
         next = skillEffect({ ...next, blockedWindows: [...(next.blockedWindows ?? []), recovery.window] },

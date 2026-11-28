@@ -2,7 +2,7 @@ export const SKILL_MODES = [[0, '无技能'], [2, '2 技能'], [3, '3 技能']]
 
 export const SKILLS = {
   human: {
-    strong: { name: '强壮', ai: true, description: '板砸眩晕由 3 回合增至 5 回合，被命中时屠夫额外跳过 1 回合。' },
+    strong: { name: '强壮', ai: true, description: '板砸眩晕由 3 回合增至 5 回合，被屠夫命中或被狙杀扣血时，屠夫额外跳过 1 回合。' },
     healing: { name: '治疗', description: '受伤时每次行动增加 1 治疗进度，原地等待增加 2，满 8 恢复 1 生命。' },
     escape: { name: '逃生', ai: true, description: '首次点亮第三盏灯时，若受伤则立即恢复健康。' },
     focus: { name: '专注', ai: true, description: '点灯后保护至下次人类回合开始，屠夫的命中无效且不会收到提示。' },
@@ -12,7 +12,7 @@ export const SKILLS = {
     stealth: { name: '隐秘', ai: true, uses: 1, description: '从发动的本轮算起，连续 3 轮向屠夫隐藏亮灯数量及人类生命。' },
   },
   killer: {
-    snipe: { name: '狙杀', ai: true, description: '屠夫回合开始时，人类健康则狙杀进度加 1，满 5 扣 1 生命。人类受伤时重置进度。' },
+    snipe: { name: '狙杀', ai: true, description: '屠夫回合开始时，人类健康则狙杀进度加 1。满 5 时人类失去 1 生命，屠夫从本回合起跳过 2 回合，遇到强壮则跳过 3 回合。人类受伤时重置进度。' },
     lockdown: { name: '封锁', ai: true, description: '翻越过的窗户永久封闭，破板少跳过 1 回合。' },
     frenzy: { name: '狂暴', ai: true, description: '亮灯达到 3 盏时可多移动 1 次，命中人类后不再跳过回合。' },
     sabotage: { name: '破坏', uses: 2, description: '经过已点亮的灯时自动破坏，最多 2 次。本局隐藏亮灯数量。' },
